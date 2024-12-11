@@ -1,3 +1,9 @@
+# My gitignore
+/.vscode
+/models
+/tmp
+examples/rag/biencoder-nq-dev.json
+
 # Initially taken from Github's Python gitignore file
 
 # Byte-compiled / optimized / DLL files
