@@ -3,6 +3,7 @@
 /models
 /tmp
 examples/rag/biencoder-nq-dev.json
+*.code-workspace
 
 # Initially taken from Github's Python gitignore file
 
