@@ -1,13 +1,38 @@
 #include "func.h"
+
+#ifdef EIGEN
+#include "Eigen/Dense"
+#endif
+
 #ifdef SGX
 #include "../Enclave/Enclave.h"
 #endif
+
 #ifndef SGX
 #include <cstdio>
 #endif
 
 void linear(float *input, float *weight, float *bias, float *output, int N,
             int indim, int outdim) {
+#ifdef EIGEN
+    Eigen::Map<
+        Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+        inputMatrix(input, N, indim);
+
+    Eigen::Map<
+        Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+        weightMatrix(weight, outdim, indim);
+
+    Eigen::Map<
+        Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+        biasMatrix(bias, 1, outdim);
+
+    Eigen::Map<
+        Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+        outputMatrix(output, N, outdim);
+    outputMatrix =
+        inputMatrix * weightMatrix.transpose() + biasMatrix.replicate(N, 1);
+#else
 #ifdef DEBUG
     // printf("N: %d\n", N);
     // printf("indim: %d\n", indim);
@@ -27,4 +52,5 @@ void linear(float *input, float *weight, float *bias, float *output, int N,
             output[i * outdim + j] = sum + bias[j];
         }
     }
+#endif
 }

@@ -47,7 +47,7 @@ void ecallSGXOperator(const char *func, void *param, size_t paramSize,
         int indim = *(int *)((char *)p + siz - 2 * sizeof(int));
         int N = *(int *)((char *)p + siz - 3 * sizeof(int));
         float *input = (float *)p;
-        float *weight = input + N;
+        float *weight = input + N * indim;
         float *bias = weight + indim * outdim;
         linear(input, weight, bias, (float *)output, N, indim, outdim);
         return;

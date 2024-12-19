@@ -35,8 +35,10 @@
 
 #include "../App.h"
 #include "Enclave_u.h"
+#include "func.h"
 #include "operator.h"
 #include "sgx_error.h"
+#include "utils.h"
 #include <thread>
 
 void ecall_libcxx_functions(void) {
@@ -64,7 +66,7 @@ void sgxSecureLinear(float *input, float *weight, float *bias, float *output,
     char *p = (char *)param;
     memcpy(p, input, N * indim * sizeof(float));
     p += N * indim * sizeof(float);
-    memcpy(p, weight, indim * outdim * sizeof(float));
+    memcpy(p, weight, outdim * indim * sizeof(float));
     p += indim * outdim * sizeof(float);
     memcpy(p, bias, outdim * sizeof(float));
     p += outdim * sizeof(float);
@@ -80,7 +82,9 @@ void sgxSecureLinear(float *input, float *weight, float *bias, float *output,
     ret = ecallSGXOperator(global_eid, LINEAR, (void *)param, paramsize,
                            (void *)output, outsize);
     if (ret != SGX_SUCCESS) {
-        printf("ecallSGXOperator FAILED!\n");
-        exit(-1);
+        ret_error_support(ret);
+        err("ecallSGXOperator FAILED, [ERR CODE]: %d\n", ret);
     }
+    // linear(input, weight, bias, output, N, indim, outdim);
+    free(param);
 }

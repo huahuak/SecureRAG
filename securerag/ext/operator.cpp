@@ -1,5 +1,8 @@
 #include "ATen/ops/matmul.h"
+#include <ATen/core/TensorBody.h>
+#include <ATen/ops/empty_like.h>
 #include <ATen/ops/from_blob.h>
+#include <c10/util/ArrayRef.h>
 #include <torch/extension.h>
 
 #include "sgxsecurerag.h"
@@ -16,13 +19,26 @@ at::Tensor doSecureLinear(const at::Tensor &input, const at::Tensor &weight,
     float *inputp = (float *)input.const_data_ptr();
     float *weightp = (float *)weight.const_data_ptr();
     float *biasp = (float *)bias.const_data_ptr();
-    int N = input.size(0);
+    int N = 1;
+    if (input.dim() < 3) {
+        N = input.size(0);
+    } else {
+        for (int i = 0; i < input.dim() - 1; i++) {
+            N *= input.size(i);
+        }
+    }
     int indim = input.size(1);
     int outdim = weight.size(0);
-    float *output = (float *)malloc(N * outdim * sizeof(float));
+
+    c10::IntArrayRef inshape = input.sizes();
+    std::vector<int64_t> shape(inshape.begin(), inshape.end());
+    shape[shape.size() - 1] = outdim;
+    at::IntArrayRef outshape(shape);
+    at::Tensor outTensor = at::empty(outshape, input.options());
+
+    outTensor.contiguous();
+    float *output = (float *)outTensor.mutable_data_ptr();
     sgxSecureLinear(inputp, weightp, biasp, output, N, indim, outdim);
-    at::Tensor outTensor =
-        torch::from_blob((void *)output, {N, outdim}, torch::kFloat32);
     return outTensor;
 }
 

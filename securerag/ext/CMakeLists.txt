@@ -27,5 +27,5 @@ include_directories(
 target_link_libraries(${PROJECT_NAME} PRIVATE sgxrag)
 
 install(TARGETS ${PROJECT_NAME}
-    DESTINATION ../lib
+    DESTINATION ../dev
 )

@@ -14,6 +14,8 @@ else()
     set(LDS Enclave/Enclave_debug.lds)
 endif()
 
+set(SGX_INCLUDE /opt/intel/sgxsdk/include)
+
 # MARK: Common
 set(COMMON common)
 set(COMMON_SRC
@@ -24,8 +26,12 @@ add_library(${COMMON} SHARED ${COMMON_SRC})
 include_directories(
     common
     common/model
+    common/eigen
+    ${SGX_INCLUDE}
 )
-install(TARGETS ${COMMON} DESTINATION ../lib)
+target_compile_definitions(${COMMON} PRIVATE EIGEN=1)
+
+install(TARGETS ${COMMON} DESTINATION ../dev)
 
 # MARK: Enclave
 set(EDL_SEARCH_PATHS
@@ -36,7 +42,6 @@ set(E_SRCS
 )
 set(T_SRCS
     Enclave/TrustedLibrary/Libcxx.cpp
-
 )
 add_trusted_library(trusted_lib
     SRCS ${T_SRCS} ${COMMON_SRC}
@@ -55,7 +60,7 @@ enclave_sign(enclave
     KEY Enclave/Enclave_private.pem
     CONFIG Enclave/Enclave.config.xml
 )
-
+install(FILES $<TARGET_FILE_DIR:enclave>/enclave.signed.so DESTINATION ../dev)
 
 # MARK: APP
 set(SRCS
@@ -84,4 +89,4 @@ add_untrusted_library(${SGXRAGLIB} SHARED
 )
 target_link_libraries(${SGXRAGLIB} ${COMMON})
 add_dependencies(${SGXRAGLIB} enclave-sign)
-install(TARGETS ${SGXRAGLIB} DESTINATION ../lib)
+install(TARGETS ${SGXRAGLIB} DESTINATION ../dev)
