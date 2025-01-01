@@ -39,6 +39,6 @@ enclave {
 
     trusted {
 		public void ecall_lambdas_demo(void);
-    public void ecallSGXOperator([in, string] const char *func, [in, size=paramSize] void *param, size_t paramSize, [out, size=outSize]void *output, size_t outSize);
+    public void ecallSGXOperator([in, string] const char *func, [in, size=paramSize] void *param, size_t paramSize, [in, count=offsetLen] int *offset, size_t offsetLen, [out, size=outSize]void *output, size_t outSize);
     };
 };

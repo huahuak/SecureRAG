@@ -52,7 +52,6 @@ void ecall_libcxx_functions(void) {
 
 void sgxSecureLinear(float *input, float *weight, float *bias, float *output,
                      int N, int indim, int outdim) {
-    void *param;
     size_t paramsize;
     size_t outsize;
 
@@ -60,31 +59,28 @@ void sgxSecureLinear(float *input, float *weight, float *bias, float *output,
     paramsize = (N * indim * sizeof(float)) + (indim * outdim * sizeof(float)) +
                 (outdim * sizeof(float)) + (3 * sizeof(int));
     outsize = (N * outdim * sizeof(float));
-    param = (void *)malloc(paramsize);
 
     // copy data
-    char *p = (char *)param;
-    memcpy(p, input, N * indim * sizeof(float));
-    p += N * indim * sizeof(float);
-    memcpy(p, weight, outdim * indim * sizeof(float));
-    p += indim * outdim * sizeof(float);
-    memcpy(p, bias, outdim * sizeof(float));
-    p += outdim * sizeof(float);
-    int *p2 = (int *)p;
-    *p2 = N;
-    p2 += 1;
-    *p2 = indim;
-    p2 += 1;
-    *p2 = outdim;
+    Param param(paramsize);
+    param.putPtr(input, N * indim);
+    param.putPtr(weight, outdim * indim);
+    param.putPtr(bias, outdim);
+    param.put(N);
+    param.put(indim);
+    param.put(outdim);
 
     //  call
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
-    ret = ecallSGXOperator(global_eid, LINEAR, (void *)param, paramsize,
+    ret = ecallSGXOperator(global_eid, LINEAR, (void *)param.m, param.msize,
+                           param.offset.data(), param.offset.size(),
                            (void *)output, outsize);
     if (ret != SGX_SUCCESS) {
         ret_error_support(ret);
         err("ecallSGXOperator FAILED, [ERR CODE]: %d\n", ret);
     }
-    // linear(input, weight, bias, output, N, indim, outdim);
-    free(param);
 }
+
+void sgxSecureAttention(float *q, float *k, float *out, float *qw, float *qb,
+                        float *kw, float *kb, float *vw, float *vb, float *fw,
+                        float *fb, int bsz, int tgtlen, int srclen,
+                        int embeddim, int nh) {}

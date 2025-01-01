@@ -39,17 +39,22 @@
 void ecall_lambdas_demo() {}
 
 void ecallSGXOperator(const char *func, void *param, size_t paramSize,
-                      void *output, size_t outSize) {
+                      int *offset, size_t offsetLen, void *output,
+                      size_t outSize) {
+    Param parameter((char *)param, (int)paramSize,
+                    std::vector<int>(offset, offset + offsetLen));
     if (strcmp(func, LINEAR) == 0) {
-        int siz = paramSize;
-        void *p = param;
-        int outdim = *(int *)((char *)p + siz - sizeof(int));
-        int indim = *(int *)((char *)p + siz - 2 * sizeof(int));
-        int N = *(int *)((char *)p + siz - 3 * sizeof(int));
-        float *input = (float *)p;
-        float *weight = input + N * indim;
-        float *bias = weight + indim * outdim;
+        float *input = parameter.getPtr<float>(0);
+        float *weight = parameter.getPtr<float>(1);
+        float *bias = parameter.getPtr<float>(2);
+        int N = parameter.get<int>(3);
+        int indim = parameter.get<int>(4);
+        int outdim = parameter.get<int>(5);
         linear(input, weight, bias, (float *)output, N, indim, outdim);
         return;
     }
 }
+
+// void ocallGetLinearInfo(float *weight, float *bias, int N, int indim,
+//                         int outdim, int *linearid) {}
+

@@ -30,6 +30,7 @@ void linear(float *input, float *weight, float *bias, float *output, int N,
     Eigen::Map<
         Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         outputMatrix(output, N, outdim);
+
     outputMatrix =
         inputMatrix * weightMatrix.transpose() + biasMatrix.replicate(N, 1);
 #else

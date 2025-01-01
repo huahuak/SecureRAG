@@ -30,7 +30,6 @@ include_directories(
     ${SGX_INCLUDE}
 )
 target_compile_definitions(${COMMON} PRIVATE EIGEN=1)
-
 install(TARGETS ${COMMON} DESTINATION ../dev)
 
 # MARK: Enclave
@@ -42,6 +41,10 @@ set(E_SRCS
 )
 set(T_SRCS
     Enclave/TrustedLibrary/Libcxx.cpp
+    Enclave/TrustedLibrary/mask.cpp
+)
+include_directories(
+    Enclave/TrustedLibrary
 )
 add_trusted_library(trusted_lib
     SRCS ${T_SRCS} ${COMMON_SRC}

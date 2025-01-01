@@ -1,0 +1,9 @@
+CompileFlags:
+  Remove: # for clangd IntelliSense
+    [
+      "-IInclude",
+      "-I/opt/intel/sgxsdk/include/libcxx",
+      "-I/opt/intel/sgxsdk/include/tlibc",
+      "-nostdinc++",
+      "-nostdinc",
+    ]

@@ -1,6 +1,9 @@
+#include "utils.h"
 #include "sgx_error.h"
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <stdarg.h>
 
 #ifdef SGX
@@ -75,3 +78,24 @@ void ret_error_support(sgx_status_t ret) {
 }
 
 #endif
+
+// MARK: Param
+Param::Param(char *m, int msize, std::vector<int> offset) {
+    this->m = m;
+    this->now = nullptr;
+    this->msize = msize;
+    this->offset = offset;
+}
+
+Param::Param(size_t initSize) {
+    m = (char *)malloc(initSize);
+    now = m;
+    msize = 0;
+    offset = {};
+}
+
+Param::~Param() {
+    if (this->now != nullptr) { // free memory in normal env.
+        free(m);
+    }
+}
