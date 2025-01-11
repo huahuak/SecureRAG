@@ -21,6 +21,7 @@ set(COMMON common)
 set(COMMON_SRC
     common/utils.cpp
     common/model/func.cpp
+    common/model/data.cpp
 )
 add_library(${COMMON} SHARED ${COMMON_SRC})
 include_directories(

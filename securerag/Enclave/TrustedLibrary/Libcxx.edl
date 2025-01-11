@@ -40,5 +40,7 @@ enclave {
     trusted {
 		public void ecall_lambdas_demo(void);
     public void ecallSGXOperator([in, string] const char *func, [in, size=paramSize] void *param, size_t paramSize, [in, count=offsetLen] int *offset, size_t offsetLen, [out, size=outSize]void *output, size_t outSize);
+    public void ecallCopyTensorToSGX([user_check] void *src, size_t siz, int typ, [in, count=10] long *dim, size_t dimSiz, [out, count=1] size_t* tensorRefId);
+    public void ecallCopyTensorFromSGX(size_t tensorRefId, [user_check] void *dst, [out, count=1] size_t *siz, [out, count=1]int *typ, [out, count=10] long *dim, [out, count=1] size_t *dimSiz);
     };
 };

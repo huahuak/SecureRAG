@@ -28,46 +28,76 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
+#include <stdio.h>
+
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <stdio.h>
+#include <thread>
+#include <vector>
 
 #include "../App.h"
 #include "Enclave_u.h"
+#include "constant.h"
+#include "data.h"
 #include "func.h"
 #include "operator.h"
 #include "sgx_error.h"
 #include "utils.h"
-#include <thread>
 
 void ecall_libcxx_functions(void) {
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
 
     // Example for lambda function feature:
     ret = ecall_lambdas_demo(global_eid);
-    if (ret != SGX_SUCCESS)
-        abort();
+    if (ret != SGX_SUCCESS) abort();
+}
+
+TensorRef sgxCopyTensorToSGX(Tensor &tensor) {
+    ID tensorRefId;
+    sgx_status_t ret = SGX_ERROR_UNEXPECTED;
+    auto p = tensor.dataPtr();
+    ret = ecallCopyTensorToSGX(global_eid, p.get(), tensor.siz, int(tensor.typ),
+                               const_cast<long *>(tensor.dim.data()),
+                               tensor.dim.size(), &tensorRefId);
+    if (ret != SGX_SUCCESS) {
+        ret_error_support(ret);
+        err("ecallCopyTensorToSGX FAILED, [ERR CODE]: %d\n", ret);
+    }
+    return TensorRef(tensorRefId, tensor.siz);
+}
+
+Tensor sgxCopyTensorFromSGX(TensorRef ref) {
+    void *mem = malloc(ref.siz);
+    size_t siz;
+    int typ;
+    long dim[MAX_DIM];
+    size_t offset;
+    sgx_status_t ret = SGX_ERROR_UNEXPECTED;
+    ret = ecallCopyTensorFromSGX(global_eid, ref.id, mem, &siz, &typ, dim,
+                                 &offset);
+    if (ret != SGX_SUCCESS) {
+        ret_error_support(ret);
+        err("ecallCopyTensorToSGX FAILED, [ERR CODE]: %d\n", ret);
+    }
+    return Tensor(mem, siz, Typ(typ), std::vector<long>(dim, dim + offset));
 }
 
 void sgxSecureLinear(float *input, float *weight, float *bias, float *output,
                      int N, int indim, int outdim) {
-    size_t paramsize;
-    size_t outsize;
-
     // calculate size and malloc space
-    paramsize = (N * indim * sizeof(float)) + (indim * outdim * sizeof(float)) +
-                (outdim * sizeof(float)) + (3 * sizeof(int));
+    size_t outsize;
     outsize = (N * outdim * sizeof(float));
 
     // copy data
-    Param param(paramsize);
+    Param param;
     param.putPtr(input, N * indim);
     param.putPtr(weight, outdim * indim);
     param.putPtr(bias, outdim);
     param.put(N);
     param.put(indim);
     param.put(outdim);
+    param.executeMemcpy();
 
     //  call
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
@@ -83,4 +113,36 @@ void sgxSecureLinear(float *input, float *weight, float *bias, float *output,
 void sgxSecureAttention(float *q, float *k, float *out, float *qw, float *qb,
                         float *kw, float *kb, float *vw, float *vb, float *fw,
                         float *fb, int bsz, int tgtlen, int srclen,
-                        int embeddim, int nh) {}
+                        int embeddim, int nh) {
+    // calculate size and malloc space
+    size_t outsize = tgtlen * bsz * embeddim * sizeof(float);
+
+    // copy data
+    Param param;
+    param.putPtr(q, bsz * tgtlen * embeddim)
+        .putPtr(k, bsz * srclen * embeddim)
+        .putPtr(qw, embeddim * embeddim)
+        .putPtr(qb, embeddim)
+        .putPtr(kw, embeddim * embeddim)
+        .putPtr(kb, embeddim)
+        .putPtr(vw, embeddim * embeddim)
+        .putPtr(vb, embeddim)
+        .putPtr(fw, embeddim * embeddim)
+        .putPtr(fb, embeddim)
+        .put(bsz)
+        .put(tgtlen)
+        .put(srclen)
+        .put(embeddim)
+        .put(nh)
+        .executeMemcpy();
+
+    // call
+    sgx_status_t ret = SGX_ERROR_UNEXPECTED;
+    ret = ecallSGXOperator(global_eid, ATTENTION, (void *)param.m, param.msize,
+                           param.offset.data(), param.offset.size(),
+                           (void *)out, outsize);
+    if (ret != SGX_SUCCESS) {
+        ret_error_support(ret);
+        err("ecallSGXOperator FAILED, [ERR CODE]: %d\n", ret);
+    }
+}

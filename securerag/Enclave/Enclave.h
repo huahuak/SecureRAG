@@ -32,8 +32,8 @@
 #ifndef _ENCLAVE_H_
 #define _ENCLAVE_H_
 
-#include <stdlib.h>
 #include <assert.h>
+#include <stdlib.h>
 
 #if defined(__cplusplus)
 extern "C" {

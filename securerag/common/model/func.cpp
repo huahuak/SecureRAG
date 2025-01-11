@@ -1,7 +1,12 @@
 #include "func.h"
 
 #ifdef EIGEN
+#include <unsupported/Eigen/CXX11/Tensor>
+
 #include "Eigen/Dense"
+
+using TensorFloat3D = Eigen::Tensor<float, 3, Eigen::RowMajor>;
+using TensorFloat2D = Eigen::Tensor<float, 2, Eigen::RowMajor>;
 #endif
 
 #ifdef SGX
@@ -53,5 +58,53 @@ void linear(float *input, float *weight, float *bias, float *output, int N,
             output[i * outdim + j] = sum + bias[j];
         }
     }
+#endif
+}
+
+void attention(float *q, float *k, float *out, float *qw, float *qb, float *kw,
+               float *kb, float *vw, float *vb, float *fw, float *fb, int bsz,
+               int tgtlen, int srclen, int embeddim, int nh) {
+#ifdef EIGEN
+    Eigen::TensorMap<TensorFloat3D> query(q, bsz, tgtlen, embeddim);
+    Eigen::TensorMap<TensorFloat3D> key(k, bsz, srclen, embeddim);
+    Eigen::TensorMap<TensorFloat3D> value(k, bsz, srclen, embeddim);
+
+    Eigen::TensorMap<TensorFloat2D> queryW(qw, embeddim, embeddim);
+    Eigen::TensorMap<TensorFloat2D> keyW(kw, embeddim, embeddim);
+    Eigen::TensorMap<TensorFloat2D> valueW(vw, embeddim, embeddim);
+    Eigen::TensorMap<TensorFloat2D> outW(fw, embeddim, embeddim);
+
+    Eigen::TensorMap<TensorFloat2D> queryB(qb, embeddim, embeddim);
+    Eigen::TensorMap<TensorFloat2D> keyB(kb, embeddim, embeddim);
+    Eigen::TensorMap<TensorFloat2D> valueB(vb, embeddim, embeddim);
+    Eigen::TensorMap<TensorFloat2D> outB(fb, embeddim, embeddim);
+
+    Eigen::TensorMap<TensorFloat3D> output(out, bsz, tgtlen, embeddim);
+
+    auto Q = query * queryW + queryB;
+    auto K = key * keyW + keyB;
+    auto V = value * valueW + valueB;
+
+    int headdim = embeddim / nh;
+    auto QT = Q.reshape(Eigen::array<int, 3>{tgtlen, bsz * nh, headdim})
+                  .shuffle(Eigen::array<int, 3>({1, 0, 2}));
+
+    auto KT = K.reshape(Eigen::array<int, 3>{srclen, bsz * nh, headdim})
+                  .shuffle(Eigen::array<int, 3>({1, 2, 0}));
+
+    auto QK = QT * KT;
+
+    // softmax
+    auto rowmax = QK.maximum(Eigen::array<int, 1>{2});
+    auto stabilized = QK - rowmax.broadcast(Eigen::array<int, 3>{1, 1, srclen});
+    auto exp = stabilized.exp();
+    auto rowsum = exp.sum(Eigen::array<int, 1>{2});
+    auto scores = exp / rowsum.broadcast(Eigen::array<int, 3>{1, 1, srclen});
+
+    // full connection
+    auto attn = scores * V;
+    output = output.shuffle(Eigen::array<int, 3>{1, 0, 2})
+                 .reshape(Eigen::array<int, 3>{tgtlen, bsz, embeddim});
+    output = attn * outW + outB;
 #endif
 }

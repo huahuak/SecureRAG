@@ -29,10 +29,11 @@
  *
  */
 
+#include "Enclave.h"
+
 #include <stdarg.h>
 #include <stdio.h> /* vsnprintf */
 
-#include "Enclave.h"
 #include "Enclave_t.h" /* print_string */
 
 /*

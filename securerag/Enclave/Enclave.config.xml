@@ -16,11 +16,12 @@
   <ProdID>0</ProdID>
   <ISVSVN>0</ISVSVN>
   <StackMaxSize>0x80000</StackMaxSize>
-  <!-- <HeapMaxSize>0x6400000</HeapMaxSize> 100 MB  -->
+  <!-- 100 MB  -->
+  <HeapMaxSize>0x6400000</HeapMaxSize> 
   <!-- 1 GB -->
   <!-- <HeapMaxSize>0x40000000</HeapMaxSize>  -->
   <!-- 5 GB -->
-  <HeapMaxSize>0x140000000</HeapMaxSize>
+  <!-- <HeapMaxSize>0x140000000</HeapMaxSize> -->
   <!-- 40 GB -->
   <!-- <HeapMaxSize>0xa00000000</HeapMaxSize> -->
   <TCSMaxNum>20</TCSMaxNum>

@@ -1,5 +1,6 @@
-#include "utils.h"
 #include <cstdio>
+
+#include "utils.h"
 
 void loadModel(const char *filePath) {
     FILE *modelFile = fopen(filePath, "r");

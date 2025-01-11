@@ -30,12 +30,12 @@
  */
 
 #include <assert.h>
-#include <cstdlib>
+#include <pwd.h>
 #include <stdio.h>
 #include <string.h>
-
-#include <pwd.h>
 #include <unistd.h>
+
+#include <cstdlib>
 #define MAX_PATH FILENAME_MAX
 
 #include "App.h"
@@ -94,8 +94,7 @@ void print_error_message(sgx_status_t ret) {
         }
     }
 
-    if (idx == ttl)
-        printf("Error: Unexpected error occurred.\n");
+    if (idx == ttl) printf("Error: Unexpected error occurred.\n");
 }
 
 /* Initialize the enclave:
@@ -148,8 +147,7 @@ int initialize_enclave(void) {
                              &global_eid, NULL);
     if (ret != SGX_SUCCESS) {
         print_error_message(ret);
-        if (fp != NULL)
-            fclose(fp);
+        if (fp != NULL) fclose(fp);
         return -1;
     }
 
@@ -157,15 +155,13 @@ int initialize_enclave(void) {
     if (updated == FALSE || fp == NULL) {
         /* if the token is not updated, or file handler is invalid, do not
          * perform saving */
-        if (fp != NULL)
-            fclose(fp);
+        if (fp != NULL) fclose(fp);
         return 0;
     }
 
     /* reopen the file with write capablity */
     fp = freopen(token_path, "wb", fp);
-    if (fp == NULL)
-        return 0;
+    if (fp == NULL) return 0;
     size_t write_num = fwrite(token, 1, sizeof(sgx_launch_token_t), fp);
     if (write_num != sizeof(sgx_launch_token_t))
         printf("Warning: Failed to save launch token to \"%s\".\n", token_path);

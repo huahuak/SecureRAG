@@ -23,6 +23,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ${TORCH_LIBRARIES} Python::Python)
 # link sgx library
 include_directories(
     ../App
+    ../common/model
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE sgxrag)
 

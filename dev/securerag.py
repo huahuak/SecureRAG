@@ -28,7 +28,7 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-torch.ops.load_library("/home/huahua/Projects/transformers-3.3.1/dev/libSecureRAGExtension.so")
+torch.ops.load_library("libSecureRAGExtension.so")
 SecureRAGExtension = torch.ops.SecureRAGExtension
 SecureRAGExtension.openSGX()
 

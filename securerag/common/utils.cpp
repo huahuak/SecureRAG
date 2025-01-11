@@ -1,10 +1,13 @@
 #include "utils.h"
-#include "sgx_error.h"
+
+#include <stdarg.h>
+
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <stdarg.h>
+
+#include "sgx_error.h"
 
 #ifdef SGX
 #include "../Enclave/Enclave.h"
@@ -72,8 +75,7 @@ void ret_error_support(sgx_status_t ret) {
             break;
         }
     }
-    if (idx == ttl)
-        printf("Error: Unexpected error occurred.");
+    if (idx == ttl) printf("Error: Unexpected error occurred.");
     return;
 }
 
@@ -87,15 +89,23 @@ Param::Param(char *m, int msize, std::vector<int> offset) {
     this->offset = offset;
 }
 
-Param::Param(size_t initSize) {
-    m = (char *)malloc(initSize);
+Param::Param() {
+    m = nullptr;
     now = m;
     msize = 0;
     offset = {};
 }
 
 Param::~Param() {
-    if (this->now != nullptr) { // free memory in normal env.
+    if (this->now != nullptr) {  // free memory in normal env.
         free(m);
+    }
+}
+
+void Param::executeMemcpy() {
+    m = (char *)malloc(msize);
+    now = m;
+    for (auto fn : todoFn) {
+        fn();
     }
 }
