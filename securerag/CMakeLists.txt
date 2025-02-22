@@ -15,6 +15,8 @@ else()
 endif()
 
 set(SGX_INCLUDE /opt/intel/sgxsdk/include)
+# set(SGX_LIBRARY_PATH /opt/intel/sgxsdk/lib64)
+
 
 # MARK: Common
 set(COMMON common)
@@ -34,6 +36,7 @@ target_compile_definitions(${COMMON} PRIVATE EIGEN=1)
 install(TARGETS ${COMMON} DESTINATION ../dev)
 
 # MARK: Enclave
+set(TRUSTED_LIB trusted_lib)
 set(EDL_SEARCH_PATHS
     Enclave
 )
@@ -47,15 +50,17 @@ set(T_SRCS
 include_directories(
     Enclave/TrustedLibrary
 )
-add_trusted_library(trusted_lib
-    SRCS ${T_SRCS} ${COMMON_SRC}
+add_trusted_library(${TRUSTED_LIB}
+    SRCS ${T_SRCS} ${COMMON_SRC} # compile sgx api.
     EDL Enclave/Enclave.edl
     EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS}
 )
-target_compile_definitions(trusted_lib PRIVATE SGX=1)
+target_include_directories(${TRUSTED_LIB} PRIVATE sgx_include)
+target_compile_definitions(${TRUSTED_LIB} PRIVATE SGX=1)
+target_compile_definitions(${TRUSTED_LIB} PRIVATE EIGEN=1)
 add_enclave_library(enclave
     SRCS ${E_SRCS}
-    TRUSTED_LIBS trusted_lib
+    TRUSTED_LIBS ${TRUSTED_LIB} 
     EDL Enclave/Enclave.edl
     EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS}
     LDSCRIPT ${LDS}
@@ -81,7 +86,7 @@ add_untrusted_executable(SGXRAG
     EDL Enclave/Enclave.edl
     EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS}
 )
-target_link_libraries(SGXRAG ${COMMON})
+target_link_libraries(SGXRAG)
 add_dependencies(SGXRAG enclave-sign)
 set_target_properties(SGXRAG PROPERTIES EXCLUDE_FROM_ALL true)
 
@@ -91,6 +96,6 @@ add_untrusted_library(${SGXRAGLIB} SHARED
     EDL Enclave/Enclave.edl
     EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS}
 )
-target_link_libraries(${SGXRAGLIB} ${COMMON})
+target_link_libraries(${SGXRAGLIB} ${COMMON}) # link non-sgx api.
 add_dependencies(${SGXRAGLIB} enclave-sign)
 install(TARGETS ${SGXRAGLIB} DESTINATION ../dev)

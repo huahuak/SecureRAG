@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.24.0 FATAL_ERROR)
 
 project(SecureRAGExtension LANGUAGES CXX)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
 execute_process(
     COMMAND

@@ -1,5 +1,6 @@
 #!/bin/bash
 
-make -C build clean &&
-    make -C build -j 16 install &&
+rm -rf build &&
+    cmake -B build . -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_VERBOSE_MAKEFILE=ON &&
+    make -C build -j 24 install &&
     time (cd dev && python3 -m unittest -v)

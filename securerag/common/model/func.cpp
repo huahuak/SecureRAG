@@ -1,38 +1,45 @@
 #include "func.h"
 
-#ifdef EIGEN
-#include <unsupported/Eigen/CXX11/Tensor>
+// #include <assert.h>
 
-using TensorFloat4D = Eigen::Tensor<float, 4, Eigen::RowMajor>;
-using TensorFloat3D = Eigen::Tensor<float, 3, Eigen::RowMajor>;
-using TensorFloat2D = Eigen::Tensor<float, 2, Eigen::RowMajor>;
-#endif
+#include <cmath>
+#include <cstddef>
+// #include <iomanip>
+#include <numeric>
+#include <stdexcept>
+#include <unordered_map>
+#include <vector>
 
 #ifndef SGX
 #include <cstdio>
 #endif
 
 #ifdef SGX
-#include <assert.h>
 
-#include <cmath>
-#include <cstddef>
-#include <iomanip>
-#include <numeric>
-#include <stdexcept>
-#include <unordered_map>
-#include <vector>
-
+#ifdef DEBUG
 #include "../Enclave/Enclave.h"
+#endif
 #include "dnnl.hpp"
 #include "dnnl_types.h"
 #include "dnnl_utils.h"
+#include "eigen_sgx.h"
 
 using namespace dnnl;
 
 using tag = memory::format_tag;
 auto dtype = memory::data_type::f32;
 using precision = float;
+#endif
+
+#ifdef EIGEN
+
+#ifndef SGX
+#include <unsupported/Eigen/CXX11/Tensor>
+#endif
+
+using TensorFloat4D = Eigen::Tensor<float, 4, Eigen::RowMajor>;
+using TensorFloat3D = Eigen::Tensor<float, 3, Eigen::RowMajor>;
+using TensorFloat2D = Eigen::Tensor<float, 2, Eigen::RowMajor>;
 #endif
 
 void linear(float *input, float *weight, float *bias, float *output, int N,
@@ -79,56 +86,8 @@ void linear(float *input, float *weight, float *bias, float *output, int N,
 #endif
 }
 
-void attention(float *q, float *k, float *out, float *qw, float *qb, float *kw,
-               float *kb, float *vw, float *vb, float *fw, float *fb, int bsz,
-               int tgtlen, int srclen, int embeddim, int nh) {
-#ifdef EIGEN
-    Eigen::TensorMap<TensorFloat3D> query(q, bsz, tgtlen, embeddim);
-    Eigen::TensorMap<TensorFloat3D> key(k, bsz, srclen, embeddim);
-    Eigen::TensorMap<TensorFloat3D> value(k, bsz, srclen, embeddim);
-
-    Eigen::TensorMap<TensorFloat2D> queryW(qw, embeddim, embeddim);
-    Eigen::TensorMap<TensorFloat2D> keyW(kw, embeddim, embeddim);
-    Eigen::TensorMap<TensorFloat2D> valueW(vw, embeddim, embeddim);
-    Eigen::TensorMap<TensorFloat2D> outW(fw, embeddim, embeddim);
-
-    Eigen::TensorMap<TensorFloat2D> queryB(qb, embeddim, embeddim);
-    Eigen::TensorMap<TensorFloat2D> keyB(kb, embeddim, embeddim);
-    Eigen::TensorMap<TensorFloat2D> valueB(vb, embeddim, embeddim);
-    Eigen::TensorMap<TensorFloat2D> outB(fb, embeddim, embeddim);
-
-    Eigen::TensorMap<TensorFloat3D> output(out, bsz, tgtlen, embeddim);
-
-    auto Q = query * queryW + queryB;
-    auto K = key * keyW + keyB;
-    auto V = value * valueW + valueB;
-
-    int headdim = embeddim / nh;
-    auto QT = Q.reshape(Eigen::array<int, 3>{tgtlen, bsz * nh, headdim})
-                  .shuffle(Eigen::array<int, 3>({1, 0, 2}));
-
-    auto KT = K.reshape(Eigen::array<int, 3>{srclen, bsz * nh, headdim})
-                  .shuffle(Eigen::array<int, 3>({1, 2, 0}));
-
-    auto QK = QT * KT;
-
-    // softmax
-    auto rowmax = QK.maximum(Eigen::array<int, 1>{2});
-    auto stabilized = QK - rowmax.broadcast(Eigen::array<int, 3>{1, 1, srclen});
-    auto exp = stabilized.exp();
-    auto rowsum = exp.sum(Eigen::array<int, 1>{2});
-    auto scores = exp / rowsum.broadcast(Eigen::array<int, 3>{1, 1, srclen});
-
-    // full connection
-    auto attn = scores * V;
-    output = output.shuffle(Eigen::array<int, 3>{1, 0, 2})
-                 .reshape(Eigen::array<int, 3>{tgtlen, bsz, embeddim});
-    output = attn * outW + outB;
-#endif
-}
-
-#if defined(EIGEN) && defined(SGX)
 namespace dnnlfunc {
+#if defined(EIGEN) && defined(SGX)
 struct sdpa_dims_t {
     memory::dim mb;
     memory::dim seq_len;
@@ -292,5 +251,5 @@ void attention_network(engine::kind ekind,
     // Wait for the computation to finish.
     strm.wait();
 }
-}  // namespace dnnlfunc
 #endif
+}  // namespace dnnlfunc

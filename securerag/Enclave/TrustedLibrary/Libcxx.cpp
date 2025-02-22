@@ -67,22 +67,14 @@ void ecallSGXOperator(const char *func, void *param, size_t paramSize,
         return;
     }
     if (strcmp(func, ATTENTION) == 0) {
-        attention(p.getPtr<float>(0), p.getPtr<float>(1), (float *)output,
-                  p.getPtr<float>(2), p.getPtr<float>(3), p.getPtr<float>(4),
-                  p.getPtr<float>(5), p.getPtr<float>(6), p.getPtr<float>(7),
-                  p.getPtr<float>(8), p.getPtr<float>(9), p.get<int>(10),
-                  p.get<int>(11), p.get<int>(12), p.get<int>(13),
-                  p.get<int>(14));
+        // attention(p.getPtr<float>(0), p.getPtr<float>(1), (float *)output,
+        //           p.getPtr<float>(2), p.getPtr<float>(3), p.getPtr<float>(4),
+        //           p.getPtr<float>(5), p.getPtr<float>(6), p.getPtr<float>(7),
+        //           p.getPtr<float>(8), p.getPtr<float>(9), p.get<int>(10),
+        //           p.get<int>(11), p.get<int>(12), p.get<int>(13),
+        //           p.get<int>(14));
         return;
     }
-}
-
-void ecallSGXAttention(float *q, float *k, float *out, float *qw, float *qb,
-                       float *kw, float *kb, float *vw, float *vb, float *fw,
-                       float *fb, int bsz, int tgtlen, int srclen, int embeddim,
-                       int nh) {
-    attention(q, k, out, qw, qb, kw, kb, vw, vb, fw, fb, bsz, tgtlen, srclen,
-              embeddim, nh);
 }
 
 // MARK: Tensor

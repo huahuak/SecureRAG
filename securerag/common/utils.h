@@ -12,7 +12,11 @@
     printf("\n");
 
 void err(const char *fmt, ...);
+
+#ifndef SGX
+// this API is only for non-SGX env.
 void ret_error_support(sgx_status_t ret);
+#endif
 
 class Param {
    public:

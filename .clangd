@@ -1,9 +1,32 @@
+If:
+  PathMatch: [
+    securerag/common/model/func.cpp,
+    securerag/common/dnnl_utils.h,
+  ]
+CompileFlags:
+  Add:
+    [
+      -DSGX,
+      -DEIGEN,
+      -nostdinc,
+      -nostdinc++,
+      -I/opt/intel/sgxsdk/include,
+      -I/opt/intel/sgxsdk/include/tlibc,
+      -I/opt/intel/sgxsdk/include/libcxx,
+      -I/home/huahua/Projects/transformers-3.3.1/securerag/sgx_include,
+    ]
+  Remove:
+    [
+    ]
+
+---
+
 CompileFlags:
   Remove: # for clangd IntelliSense
     [
-      "-IInclude",
-      "-I/opt/intel/sgxsdk/include/libcxx",
-      "-I/opt/intel/sgxsdk/include/tlibc",
-      "-nostdinc++",
-      "-nostdinc",
+      -IInclude,
+      -I/opt/intel/sgxsdk/include/libcxx,
+      -I/opt/intel/sgxsdk/include/tlibc,
+      -nostdinc++,
+      -nostdinc,
     ]

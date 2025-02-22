@@ -43,32 +43,32 @@
 #include "dnnl.hpp"
 
 
-// static dnnl::engine::kind parse_engine_kind(int argc, char **argv,
-//                                             int extra_args = 0) {
-//     // Returns default engine kind, i.e. CPU, if none given
-//     if (argc == 1) {
-//         return dnnl::engine::kind::cpu;
-//     } else if (argc <= extra_args + 2) {
-//         std::string engine_kind_str = argv[1];
-//         // Checking the engine type, i.e. CPU or GPU
-//         if (engine_kind_str == "cpu") {
-//             return dnnl::engine::kind::cpu;
-//         } else if (engine_kind_str == "gpu") {
-//             // Checking if a GPU exists on the machine
-//             if (dnnl::engine::get_count(dnnl::engine::kind::gpu) == 0) {
-//                 printf(
-//                     "Application couldn't find GPU, please run with CPU "
-//                     "instead. Thanks!\n");
-//                 abort();
-//             }
-//             return dnnl::engine::kind::gpu;
-//         }
-//     }
+static dnnl::engine::kind parse_engine_kind(int argc, char **argv,
+                                            int extra_args = 0) {
+    // Returns default engine kind, i.e. CPU, if none given
+    if (argc == 1) {
+        return dnnl::engine::kind::cpu;
+    } else if (argc <= extra_args + 2) {
+        std::string engine_kind_str = argv[1];
+        // Checking the engine type, i.e. CPU or GPU
+        if (engine_kind_str == "cpu") {
+            return dnnl::engine::kind::cpu;
+        } else if (engine_kind_str == "gpu") {
+            // Checking if a GPU exists on the machine
+            if (dnnl::engine::get_count(dnnl::engine::kind::gpu) == 0) {
+                printf(
+                    "Application couldn't find GPU, please run with CPU "
+                    "instead. Thanks!\n");
+                abort();
+            }
+            return dnnl::engine::kind::gpu;
+        }
+    }
 
-//     // If all above fails, the example should be ran properly
-//     printf("Please run example like this: cpu|gpu");
-//     abort();
-// }
+    // If all above fails, the example should be ran properly
+    printf("Please run example like this: cpu|gpu");
+    abort();
+}
 
 // Read from memory, write to handle
 inline void read_from_dnnl_memory(void *handle, dnnl::memory &mem) {
