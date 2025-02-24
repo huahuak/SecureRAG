@@ -131,8 +131,8 @@ void ecallCopyTensorToSGX(void *src, size_t siz, int typ, long *dim,
 void ecallCopyTensorFromSGX(ID tensorRefId, void *dst, size_t *siz, int *typ,
                             long *dim, size_t *dimSiz) {
     auto t = TM.get(tensorRefId);
-    memcpy(dst, t.dataPtr().get(), t.siz);
-    *siz = t.siz;
+    memcpy(dst, t.dataPtr().get(), t.elementSize);
+    *siz = t.elementSize;
     *typ = int(t.typ);
     assert(t.dim.size() < MAX_DIM);
     memcpy(dim, t.dim.data(), t.dim.size() * sizeof(long));

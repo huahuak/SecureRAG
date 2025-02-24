@@ -1,7 +1,9 @@
 If:
   PathMatch: [
     securerag/common/model/func.cpp,
+    securerag/common/model/func.h,
     securerag/common/dnnl_utils.h,
+    securerag/common/operator.cpp,
   ]
 CompileFlags:
   Add:

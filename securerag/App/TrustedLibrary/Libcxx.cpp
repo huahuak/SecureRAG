@@ -57,18 +57,18 @@ TensorRef sgxCopyTensorToSGX(Tensor &tensor) {
     ID tensorRefId;
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
     auto p = tensor.dataPtr();
-    ret = ecallCopyTensorToSGX(global_eid, p.get(), tensor.siz, int(tensor.typ),
+    ret = ecallCopyTensorToSGX(global_eid, p.get(), tensor.elementSize, int(tensor.typ),
                                const_cast<long *>(tensor.dim.data()),
                                tensor.dim.size(), &tensorRefId);
     if (ret != SGX_SUCCESS) {
         ret_error_support(ret);
         err("ecallCopyTensorToSGX FAILED, [ERR CODE]: %d\n", ret);
     }
-    return TensorRef(tensorRefId, tensor.siz);
+    return TensorRef(tensorRefId, tensor.elementSize);
 }
 
 Tensor sgxCopyTensorFromSGX(TensorRef ref) {
-    void *mem = malloc(ref.siz);
+    void *mem = malloc(ref.elementSize);
     size_t siz;
     int typ;
     long dim[MAX_DIM];

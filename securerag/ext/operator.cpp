@@ -66,6 +66,12 @@ namespace SecureRAGExtension {
 
 c10::intrusive_ptr<PytorchTensorRef> doCopyTensorToSGX(
     const at::Tensor &tensor) {
+    TORCH_CHECK(tensor.device().type() == at::DeviceType::CPU,
+                "itensor_view_from_dense expects CPU tensor input");
+    TORCH_CHECK(tensor.layout() == at::Layout::Strided,
+                "itensor_view_from_dense expects dense tensor input");
+    TORCH_CHECK(tensor.scalar_type() == at::ScalarType::Float,
+                "itensor_view_from_dense expects float tensor input");
     if (tensor.dtype() != torch::kFloat32) {
         printf("[ERROR]: TENSOR IS NOT FLOAT32.");
         exit(-1);

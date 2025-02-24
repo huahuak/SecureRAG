@@ -13,17 +13,17 @@ using ID = size_t;
 
 // MARK: Tensor
 enum class Typ {
-    INT,
+    INT32,
     FLOAT32,
 };
 
 class TensorRef {
    public:
     const ID id;
-    const size_t siz;
+    const size_t elementSize;
 
    public:
-    TensorRef(ID id, size_t siz) : id(id), siz(siz){};
+    TensorRef(ID id, size_t siz) : id(id), elementSize(siz){};
 };
 
 class Tensor {
@@ -33,17 +33,25 @@ class Tensor {
     Tensor(void* mem, size_t siz, Typ typ, std::vector<long> dim)
         : mem(std::shared_ptr<std::byte>((std::byte*)mem,
                                          [](std::byte* ptr) { delete[] ptr; })),
-          siz(siz),
+          elementSize(siz),
           typ(typ),
           dim(dim){};
 
     Tensor(std::shared_ptr<std::byte> mem, size_t siz, Typ typ,
            std::vector<long> dim)
-        : mem(mem), siz(siz), typ(typ), dim(dim){};
+        : mem(mem), elementSize(siz), typ(typ), dim(dim){};
 
     std::shared_ptr<std::byte> dataPtr();
+    size_t elementNum();
 
-    const size_t siz;
+    template <typename P>
+    P first() {
+        return (P*)mem.get();
+    }
+
+    static Tensor convertInt32toTensor(int i);
+
+    const size_t elementSize;
     const std::vector<long> dim;
     const Typ typ;
 

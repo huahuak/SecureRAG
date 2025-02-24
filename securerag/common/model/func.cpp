@@ -6,6 +6,7 @@
 #include <cstddef>
 // #include <iomanip>
 #include <numeric>
+#include <span>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -19,16 +20,12 @@
 #ifdef DEBUG
 #include "../Enclave/Enclave.h"
 #endif
+#include "../common/dnnl_utils.h"
 #include "dnnl.hpp"
 #include "dnnl_types.h"
 #include "dnnl_utils.h"
 #include "eigen_sgx.h"
 
-using namespace dnnl;
-
-using tag = memory::format_tag;
-auto dtype = memory::data_type::f32;
-using precision = float;
 #endif
 
 #ifdef EIGEN
@@ -87,14 +84,12 @@ void linear(float *input, float *weight, float *bias, float *output, int N,
 }
 
 namespace dnnlfunc {
+
 #if defined(EIGEN) && defined(SGX)
-struct sdpa_dims_t {
-    memory::dim mb;
-    memory::dim seq_len;
-    memory::dim head_num;
-    memory::dim head_size;
-    memory::dim query_num;
-};
+
+using namespace dnnl;
+
+using tag = memory::format_tag;
 
 static size_t product(const memory::dims &dims) {
     return (size_t)std::accumulate(dims.begin(), dims.end(), (memory::dim)1,
@@ -102,7 +97,7 @@ static size_t product(const memory::dims &dims) {
 }
 
 // m3 = m1 * m2;
-static void BMM(memory m1, memory m2, memory m3) {
+static void bmm(memory m1, memory m2, memory m3) {
     auto Tensor = [](memory m) -> TensorFloat4D {
         auto DIM_SIZE = 4;
         auto desc = m.get_desc();
@@ -134,9 +129,10 @@ static void BMM(memory m1, memory m2, memory m3) {
     }
 }
 
-void attention_network(engine::kind ekind,
-                       const sdpa_dims_t &p = {32, 384, 16, 64, 384},
-                       memory::data_type dt = dtype) {
+void attention(const T *const query, const T *const key, const T *const &value,
+               const T *const mask, T *const output, const attn_dims_t &p,
+               bool hasMask, memory::data_type dt, engine::kind ekind) {
+    assert(dnnlDataType == memory::data_type::f32 && "only support float32.");
     // Create execution dnnl::engine.
     dnnl::engine eng(ekind, 0);
     // Create dnnl::stream.
@@ -177,20 +173,11 @@ void attention_network(engine::kind ekind,
     auto m_output = memory(output_md, eng);
     auto m_score = memory(score_md, eng);
 
-    // Allocate user data.
-    std::vector<float> query_data(product(q_sz));
-    std::vector<float> key_data(product(k_sz));
-    std::vector<float> scale_data(product(scale_sz));
-    std::vector<float> mask_data(product(mask_sz));
-    std::vector<float> value_data(product(v_sz));
-    std::vector<float> output_data(product(q_sz));
-
     // Write data to tensor object's handle.
-    write_to_dnnl_memory(query_data.data(), m_query);
-    write_to_dnnl_memory(key_data.data(), m_key);
-    write_to_dnnl_memory(scale_data.data(), m_scale);
-    write_to_dnnl_memory(mask_data.data(), m_mask);
-    write_to_dnnl_memory(value_data.data(), m_value);
+    write_to_dnnl_memory((void *)query, m_query);
+    write_to_dnnl_memory((void *)key, m_key);
+    write_to_dnnl_memory((void *)mask, m_mask);
+    write_to_dnnl_memory((void *)value, m_value);
 
     // scaled_score = score / scale
     auto scaledDesc = eltwise_forward::desc(
@@ -202,14 +189,16 @@ void attention_network(engine::kind ekind,
     arg.push_back({{DNNL_ARG_SRC, m_score}, {DNNL_ARG_DST, m_scale}});
 
     // masked_score = scaled_score + mask
-    auto maskedDesc =
-        binary::desc(algorithm::binary_add, scale_md, mask_md, score_md);
-    auto maskedPrimDesc = binary::primitive_desc(maskedDesc, eng);
-    auto maskedPrim = binary(maskedPrimDesc);
-    net.push_back((maskedPrim));
-    arg.push_back({{DNNL_ARG_SRC, m_scale},
-                   {DNNL_ARG_SRC_1, m_mask},
-                   {DNNL_ARG_DST, m_score}});
+    if (hasMask) {
+        auto maskedDesc =
+            binary::desc(algorithm::binary_add, scale_md, mask_md, score_md);
+        auto maskedPrimDesc = binary::primitive_desc(maskedDesc, eng);
+        auto maskedPrim = binary(maskedPrimDesc);
+        net.push_back((maskedPrim));
+        arg.push_back({{DNNL_ARG_SRC, m_scale},
+                       {DNNL_ARG_SRC_1, m_mask},
+                       {DNNL_ARG_DST, m_score}});
+    }
 
     // attention_probs = softmax(masked_score)
     primitive_attr softmax_attr;
@@ -230,9 +219,9 @@ void attention_network(engine::kind ekind,
                    {DNNL_ARG_SRC, m_score},
                    {DNNL_ARG_SCRATCHPAD, m_scratchpad}});
 
-    const auto loop = [&]() {
+    const auto execute = [&]() {
         // score = query x key.T
-        BMM(m_query, m_key, m_score);
+        bmm(m_query, m_key, m_score);
 
         // attention_probs = softmax(score / scale + mask)
         assert(net.size() == arg.size() && "something is missing");
@@ -241,15 +230,77 @@ void attention_network(engine::kind ekind,
         }
 
         // attention_output = attention_probs x value
-        BMM(m_score, m_value, m_output);
+        bmm(m_score, m_value, m_output);
     };
 
     // Warmup run.
     // Execute primitives of sdpa.
-    loop();
-
+    execute();
     // Wait for the computation to finish.
     strm.wait();
+    read_from_dnnl_memory(output.data(), m_output);
 }
+
+void linear(std::vector<T> &input, std::vector<T> &weight, std::vector<T> &bias,
+            std::vector<T> &output, int N, int indim, int outdim) {
+    assert(dnnlDataType == memory::data_type::f32 && "only support float32.");
+    // Create execution dnnl::engine.
+    dnnl::engine eng(dnnl::engine::kind::cpu, 0);
+    // Create dnnl::stream.
+    dnnl::stream strm(eng);
+
+    // network and argument
+    std::vector<primitive> net;
+    std::vector<std::unordered_map<int, memory>> arg;
+
+    // Prepare input and output shapes.
+    const dnnl::memory::dims input_sz = {N, indim};
+    const dnnl::memory::dims weight_sz = {indim, outdim};
+    const dnnl::memory::dims bias_sz = {outdim};
+    const dnnl::memory::dims output_sz = {N, outdim};
+
+    // Memory description
+    auto input_md = memory::desc(input_sz, dnnlDataType, tag::ab);
+    auto weight_md = memory::desc(weight_sz, dnnlDataType, tag::ab);
+    auto bias_md = memory::desc(bias_sz, dnnlDataType, tag::a);
+    auto output_md = memory::desc(output_sz, dnnlDataType, tag::ab);
+
+    // Create memory objects.
+    auto m_input = memory(input_md, eng);
+    auto m_weight = memory(weight_md, eng);
+    auto m_bias = memory(bias_md, eng);
+    auto m_output = memory(output_md, eng);
+
+    // Write data to tensor object's handle.
+    write_to_dnnl_memory(input.data(), m_input);
+    write_to_dnnl_memory(weight.data(), m_weight);
+    write_to_dnnl_memory(bias.data(), m_bias);
+
+    // Create linear primitive.
+    auto linear_desc = inner_product_forward::desc(
+        prop_kind::forward_inference, input_md, weight_md, bias_md, output_md);
+    auto linear_pd = inner_product_forward::primitive_desc(linear_desc, eng);
+    auto linear_prim = inner_product_forward(linear_pd);
+
+    // Push primitive to network.
+    net.push_back(linear_prim);
+    arg.push_back({{DNNL_ARG_SRC, m_input},
+                   {DNNL_ARG_WEIGHTS, m_weight},
+                   {DNNL_ARG_BIAS, m_bias},
+                   {DNNL_ARG_DST, m_output}});
+
+    const auto execute = [&]() {
+        // Execute primitives of sdpa.
+        for (size_t i = 0; i < net.size(); i++) {
+            net.at(i).execute(strm, arg.at(i));
+        }
+    };
+
+    execute();
+    strm.wait();
+
+    read_from_dnnl_memory(output.data(), m_output);
+}
+
 #endif
 }  // namespace dnnlfunc
