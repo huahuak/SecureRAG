@@ -6,7 +6,6 @@
 #include <cstddef>
 // #include <iomanip>
 #include <numeric>
-#include <span>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -238,7 +237,7 @@ void attention(const T *const query, const T *const key, const T *const &value,
     execute();
     // Wait for the computation to finish.
     strm.wait();
-    read_from_dnnl_memory(output.data(), m_output);
+    read_from_dnnl_memory(output, m_output);
 }
 
 void linear(std::vector<T> &input, std::vector<T> &weight, std::vector<T> &bias,

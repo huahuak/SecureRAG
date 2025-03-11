@@ -10,6 +10,7 @@ std::shared_ptr<Tensor> Operator::getTensor(std::string key) {
     assert(tensorParam.find(key) != tensorParam.end() && "key not found!");
     return tensorParam[key];
 }
+
 std::shared_ptr<Tensor> Operator::getTensor(TensorDict x, std::string key) {
     assert(x.find(key) != x.end() && "key not found!");
     return x[key];

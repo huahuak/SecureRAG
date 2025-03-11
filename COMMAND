@@ -1,0 +1,21 @@
+#!/bin/bash
+
+build() {
+    make -C build -j 16 install
+}
+
+case "${1:-build}" in
+build)
+    build
+    ;;
+py)
+    echo "Python test"
+    build
+    time (cd dev && python3 -m unittest -v)
+    ;;
+cxx)
+    echo "Cxx test"
+    build
+    time (cd dev && ./test)
+    ;;
+esac
