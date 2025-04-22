@@ -9,13 +9,13 @@ build)
     build
     ;;
 py)
-    echo "Python test"
     build
+    echo "Python test"
     time (cd dev && python3 -m unittest -v)
     ;;
 cxx)
-    echo "Cxx test"
     build
+    echo "Cxx test"
     time (cd dev && ./test)
     ;;
 esac
