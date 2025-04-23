@@ -1,0 +1,10 @@
+numpy
+transformers==3.3.1
+tensorboard
+datasets==1.1.2
+faiss-cpu >= 1.6.3
+psutil >= 5.7.0
+torch >= 1.4.0
+ray >= 1.10.0
+pytorch-lightning >= 1.5.10, <=1.6.0
+GitPython

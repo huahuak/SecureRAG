@@ -1,0 +1,8 @@
+/.vscode
+/data
+/models
+/.pytest_cache
+/securerag.zip
+/log
+
+__pycache__
