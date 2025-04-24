@@ -1,0 +1,1 @@
+const static int MAX_DIM = 10;

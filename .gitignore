@@ -4,5 +4,7 @@
 /.pytest_cache
 /securerag.zip
 /log
+/build
+/.cache
 
 __pycache__
