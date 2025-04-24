@@ -19,7 +19,7 @@
 
 #include "ATen/ops/matmul.h"
 #include "data.h"
-#include "sgxsecurerag.h"
+#include "sgx_securerag.h"
 
 #define FP(tensor) (float *)HelperFunc::getTensorConstPtr<float>(tensor)
 #define MFP(tensor) (float *)HelperFunc::getTensorMutablePtr<float>(tensor)

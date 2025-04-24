@@ -9,17 +9,16 @@ set(APP_SRCS
     app/libcxx.cpp
 )
 
-set(SGXRAGLIB sgxrag)
-add_untrusted_library(${SGXRAGLIB} SHARED
+add_untrusted_library(${SGX_RAG_LIB} SHARED
     SRCS ${SRCS}
     EDL ${ENCLAVE_EDL}
     EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS}
 )
-target_link_libraries(${SGXRAGLIB} ${CORE})
-target_link_directories(${SGXRAGLIB} PRIVATE
+target_link_libraries(${SGX_RAG_LIB} ${CORE})
+target_link_directories(${SGX_RAG_LIB} PRIVATE
     app
 )
-add_dependencies(${SGXRAGLIB} enclave-sign)
+add_dependencies(${SGX_RAG_LIB} enclave-sign)
 
 # ENCLAVE
 set(ENCLAVE_SRCS

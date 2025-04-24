@@ -23,5 +23,9 @@ get_filename_component(EDL_SEARCH_PATHS "sgx/enclave" ABSOLUTE)
 set(CORE core)
 set(SGX_CORE sgx_core)
 add_subdirectory(core)
+
+set(SGX_RAG_LIB sgxrag)
 add_subdirectory(sgx)
-# add_subdirectory(ext)
+
+set(TORCH_SECURERAG_LIB torch_securerag)
+add_subdirectory(ext)

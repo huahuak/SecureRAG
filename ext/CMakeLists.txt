@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.24.0 FATAL_ERROR)
 
-project(PyTorchExtension LANGUAGES CXX)
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+project(Ext LANGUAGES CXX)
 
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
 execute_process(
@@ -19,16 +17,14 @@ set(SRCS
     operator.cpp
 )
 
-add_library(${PROJECT_NAME} SHARED ${SRCS})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${TORCH_LIBRARIES} Python::Python)
-
-# link sgx library
-include_directories(
-    ../App
-    ../common/model
+add_library(${TORCH_SECURERAG_LIB} SHARED ${SRCS})
+target_link_libraries(${TORCH_SECURERAG_LIB} PRIVATE 
+    ${TORCH_LIBRARIES}
+    Python::Python
+    ${SGX_RAG_LIB}
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE sgxrag)
 
-install(TARGETS ${PROJECT_NAME}
-    DESTINATION ../dev
+include_directories(
+    ${INCLUDE}/sgx
+    ${INCLUDE}/core
 )

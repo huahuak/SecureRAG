@@ -31,50 +31,49 @@ logger = None
 
 
 class TestModelBase(unittest.TestCase):
-    def setUp(self):
-        self.config = Config()
-        logger = init_logger(filename=self.config.log_path)
+    @classmethod
+    def setUpClass(cls):
+        cls.config = Config()
+        logger = init_logger(filename=cls.config.log_path)
         redirectPrintToLogger()
 
         if ENABLE_PROFILER:
             # torch profile
-            self.profiler = profile(
+            cls.profiler = profile(
                 activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                 on_trace_ready=tensorboard_trace_handler("./log"),
                 record_shapes=True,
                 with_stack=True,
                 with_flops=True,
             )
-            self.profiler.start()
+            cls.profiler.start()
             if ENABLE_C_PROFILER:
                 # cProfile
-                self.pr = cProfile.Profile()
-                self.pr.enable()
+                cls.pr = cProfile.Profile()
+                cls.pr.enable()
 
-    def tearDown(self):
+    @classmethod
+    def tearDown(cls):
         if ENABLE_PROFILER:
             # torch profiler
-            self.profiler.stop()
+            cls.profiler.stop()
             print(
-                self.profiler.key_averages().table(
+                cls.profiler.key_averages().table(
                     sort_by="cuda_time_total", row_limit=15
                 )
             )
             print(
-                self.profiler.key_averages().table(
+                cls.profiler.key_averages().table(
                     sort_by="cpu_time_total", row_limit=15
                 )
             )
             if ENABLE_C_PROFILER:
                 # cProfile
-                self.pr.disable()
-                pstats.Stats(self.pr).sort_stats("time").print_stats(15)
+                cls.pr.disable()
+                pstats.Stats(cls.pr).sort_stats("time").print_stats(15)
 
 
 class TestFIDT5(TestModelBase):
-    def setUp(self):
-        super().setUp()
-
     def test_config(self):
         assert self.config.n_context == 100
         self.config.n_context = 10
@@ -171,9 +170,10 @@ class TestFIDT5(TestModelBase):
 
 
 class TestRAGSequence(TestModelBase):
-    def setUp(self):
-        super().setUp()
-        self.config.n_context = 10
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.config.n_context = 10
 
     def test_generate(self):
         # prepare model
