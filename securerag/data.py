@@ -2,6 +2,8 @@ import json
 import random
 import torch
 
+from securerag.profiler import profiler
+
 
 def load(path: str, cfg) -> dict:
     examples = []
@@ -94,6 +96,7 @@ class RAGSequenceCollator(object):
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
 
+    @profiler("RAGSequenceCollator")
     def __call__(self, batch):
         assert batch[0]["target"] != None
         index = torch.tensor([ex["index"] for ex in batch])
@@ -169,6 +172,7 @@ class FiDT5Collator(object):
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
 
+    @profiler("FiDT5Collator")
     def __call__(self, batch):
         assert batch[0]["target"] != None
         index = torch.tensor([ex["index"] for ex in batch])
@@ -220,6 +224,7 @@ class SecureRAGCollator(object):
         self.answer_maxlength = answer_maxlength
         self.privateRatio = private_passage_ratio
 
+    @profiler("SecureRAGCollator")
     def __call__(self, batch):
         assert batch[0]["target"] != None
         index = torch.tensor([ex["index"] for ex in batch])

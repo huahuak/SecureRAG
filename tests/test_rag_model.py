@@ -19,14 +19,23 @@ from torch.profiler import (
     tensorboard_trace_handler,
 )
 
+from securerag.utils import init_logger, redirectPrintToLogger
+
 
 NONDEBUG = False
 ENABLE_PROFILER = True
+ENABLE_C_PROFILER = False
+
+
+logger = None
 
 
 class TestModelBase(unittest.TestCase):
     def setUp(self):
         self.config = Config()
+        logger = init_logger(filename=self.config.log_path)
+        redirectPrintToLogger()
+
         if ENABLE_PROFILER:
             # torch profile
             self.profiler = profile(
@@ -37,26 +46,35 @@ class TestModelBase(unittest.TestCase):
                 with_flops=True,
             )
             self.profiler.start()
-            # cProfile
-            self.pr = cProfile.Profile()
-            self.pr.enable()
+            if ENABLE_C_PROFILER:
+                # cProfile
+                self.pr = cProfile.Profile()
+                self.pr.enable()
 
     def tearDown(self):
         if ENABLE_PROFILER:
             # torch profiler
             self.profiler.stop()
             print(
-                self.profiler.key_averages().table(sort_by="cuda_time_total", row_limit=15)
+                self.profiler.key_averages().table(
+                    sort_by="cuda_time_total", row_limit=15
+                )
             )
             print(
-                self.profiler.key_averages().table(sort_by="cpu_time_total", row_limit=15)
+                self.profiler.key_averages().table(
+                    sort_by="cpu_time_total", row_limit=15
+                )
             )
-            # cProfile
-            self.pr.disable()
-            pstats.Stats(self.pr).sort_stats('time').print_stats(15)
+            if ENABLE_C_PROFILER:
+                # cProfile
+                self.pr.disable()
+                pstats.Stats(self.pr).sort_stats("time").print_stats(15)
 
 
 class TestFIDT5(TestModelBase):
+    def setUp(self):
+        super().setUp()
+
     def test_config(self):
         assert self.config.n_context == 100
         self.config.n_context = 10

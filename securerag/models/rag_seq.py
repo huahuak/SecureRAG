@@ -6,6 +6,7 @@ from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_utils import PreTrainedModel
 from transformers.configuration_rag import RagConfig
 from securerag.config import Config
+from securerag.profiler import profiler
 
 
 class RAGSequence(transformers.RagSequenceForGeneration):
@@ -36,6 +37,7 @@ class RAGSequence(transformers.RagSequenceForGeneration):
         )
 
     @torch.no_grad()
+    @profiler("RAGSequence.generate")
     def generate(
         self,
         input_ids=None,
@@ -107,14 +109,18 @@ class RAGSequence(transformers.RagSequenceForGeneration):
                 len(output_sequences), 1
             )  # (candidate_size, n_docs)
             # calculate the margin loss
-            outputs = self(
-                # new_input_ids,
-                context_input_ids=rag_model_context_input_ids,
-                context_attention_mask=rag_model_context_masks,
-                doc_scores=rag_model_scores,
-                labels=output_sequences,
-                exclude_bos_score=True,
-            )
+            @profiler("RAGSequence.margin_forward")
+            def margin_forward():
+                outputs = self(
+                    # new_input_ids,
+                    context_input_ids=rag_model_context_input_ids,
+                    context_attention_mask=rag_model_context_masks,
+                    doc_scores=rag_model_scores,
+                    labels=output_sequences,
+                    exclude_bos_score=True,
+                )
+                return outputs
+            outputs = margin_forward()
             # choose the best one
             top_cand_inds = (-outputs["loss"]).topk(num_doc_return_sequences)[1]
 

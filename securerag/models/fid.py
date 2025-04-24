@@ -12,6 +12,8 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 import numpy as np
 
+from securerag.profiler import profiler
+
 
 class FiDT5(transformers.T5ForConditionalGeneration):
     def __init__(self, config):
@@ -34,6 +36,7 @@ class FiDT5(transformers.T5ForConditionalGeneration):
     # because the T5 forward method uses the input tensors to infer
     # dimensions used in the decoder.
     # EncoderWrapper resizes the inputs as (B * N) x L.
+    @profiler("FiDT5.forward")
     def forward(self, input_ids=None, attention_mask=None, **kwargs):
         if input_ids != None:
             # inputs might have already be resized in the generate method
@@ -47,6 +50,7 @@ class FiDT5(transformers.T5ForConditionalGeneration):
         )
 
     # We need to resize the inputs here, as the generate method expect 2D tensors
+    @profiler("FiDT5.generate")
     def generate(self, input_ids, attention_mask, max_length):
         self.encoder.n_passages = input_ids.size(1)
         return super().generate(
