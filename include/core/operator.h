@@ -13,7 +13,7 @@
 
 class Operator {
    public:
-    virtual TensorDict forward(TensorDict x);
+    virtual TensorDict forward(TensorDict x) = 0;
 
    protected:
     TensorDict tensorParam;

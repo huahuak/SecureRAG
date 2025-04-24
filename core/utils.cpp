@@ -7,8 +7,6 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "sgx_error.h"
-
 #ifdef SGX
 #include "enclave.h"
 #endif
@@ -24,11 +22,6 @@ void err(const char *fmt, ...) {
     exit(-1);
 #endif
 }
-
-typedef struct _sgx_errlist_t {
-    sgx_status_t err;
-    const char *msg;
-} sgx_errlist_t;
 
 // MARK: Param
 Param::Param(char *m, int msize, std::vector<int> offset) {

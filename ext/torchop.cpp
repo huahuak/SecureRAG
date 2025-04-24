@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "ATen/ops/matmul.h"
-#include "data.h"
+#include "core.h"
 #include "sgx_securerag.h"
 
 #define FP(tensor) (float *)HelperFunc::getTensorConstPtr<float>(tensor)
@@ -149,7 +149,7 @@ void doOpenSGX() {
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
 
-TORCH_LIBRARY(SecureRAGExtension, m) {
+TORCH_LIBRARY(TorchSecureRAG, m) {
     m.class_<PytorchTensorRef>("PytorchTensorRef")
         .def("id", &PytorchTensorRef::getId);
     m.def("copyTensorToSGX", doCopyTensorToSGX);

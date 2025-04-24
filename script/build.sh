@@ -4,7 +4,7 @@ do_cmake() {
 
 install_core() {
     echo "***********************************************"
-    echo "****              Instal Core              ****"
+    echo "****             Install  Core             ****"
     echo "***********************************************"
     install_sgx_api() {
         if [ ! -d "include/sgx" ]; then
@@ -27,7 +27,7 @@ install_core() {
 
 install_sgx() {
     echo "***********************************************"
-    echo "****              Instal  SGX              ****"
+    echo "****              Install SGX              ****"
     echo "***********************************************"
     install_sgx_include() {
         if [ ! -d "include/sgx" ]; then
@@ -43,8 +43,9 @@ install_sgx() {
 
 install_ext() {
     echo "***********************************************"
-    echo "****              Instal  Ext              ****"
+    echo "****              Install Ext              ****"
     echo "***********************************************"
+
     make -C build/ext
 }
 

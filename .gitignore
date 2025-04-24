@@ -7,6 +7,8 @@
 /build
 /.cache
 
+lib/*
+
 *.so
 *.a
 

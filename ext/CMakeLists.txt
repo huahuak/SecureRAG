@@ -14,7 +14,7 @@ list(APPEND CMAKE_PREFIX_PATH ${TORCH_CMAKE_PATH})
 find_package(Torch REQUIRED)
 
 set(SRCS
-    operator.cpp
+    torchop.cpp
 )
 
 add_library(${TORCH_SECURERAG_LIB} SHARED ${SRCS})
@@ -23,7 +23,6 @@ target_link_libraries(${TORCH_SECURERAG_LIB} PRIVATE
     Python::Python
     ${SGX_RAG_LIB}
 )
-
 include_directories(
     ${INCLUDE}/sgx
     ${INCLUDE}/core

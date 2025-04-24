@@ -14,7 +14,6 @@ set(SRCS
 set(HEADER_DIRS
     .
     model
-    ${SGX_INCLUDE}
     ${INCLUDE}/eigen
 )
 include_directories(${HEADER_DIRS})
@@ -30,11 +29,13 @@ install(FILES ${HEADERS} DESTINATION ${PUBLIC_INCLUDE})
 
 # CORE
 add_library(${CORE} SHARED ${SRCS})
+target_compile_definitions(${CORE} PRIVATE EIGEN=1)
 target_include_directories(${CORE} PUBLIC ./include)
 target_include_directories(${CORE} PRIVATE 
-    ${INCLUDE}/ideep
+    ${INCLUDE}/dnnl
 )
-target_compile_definitions(${CORE} PRIVATE EIGEN=1)
+target_link_directories(${CORE} PRIVATE ${LIB}/dnnl)
+target_link_libraries(${CORE} PRIVATE dnnl)
 
 # SGX_CORE
 add_trusted_library(${SGX_CORE}
@@ -46,7 +47,6 @@ add_trusted_library(${SGX_CORE}
 target_compile_definitions(${SGX_CORE} PRIVATE SGX=1)
 target_compile_definitions(${SGX_CORE} PRIVATE EIGEN=1)
 target_include_directories(${SGX_CORE} PRIVATE 
-    ${INCLUDE}/sgx_ideep
     ${INCLUDE}/sgx
     ${INCLUDE}/core
 )

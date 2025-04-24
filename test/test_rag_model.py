@@ -20,6 +20,7 @@ from torch.profiler import (
 )
 
 from securerag.utils import init_logger, redirectPrintToLogger
+from test.test_base import TestConfigLoggerBase
 
 
 NONDEBUG = False
@@ -30,13 +31,9 @@ ENABLE_C_PROFILER = False
 logger = None
 
 
-class TestModelBase(unittest.TestCase):
+class TestModelBase(TestConfigLoggerBase):
     @classmethod
     def setUpClass(cls):
-        cls.config = Config()
-        logger = init_logger(filename=cls.config.log_path)
-        redirectPrintToLogger()
-
         if ENABLE_PROFILER:
             # torch profile
             cls.profiler = profile(
