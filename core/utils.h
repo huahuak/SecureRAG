@@ -4,19 +4,12 @@
 #include <functional>
 #include <vector>
 
-#include "sgx_error.h"
-
 #define ERR(fmt, ...)                       \
     printf("[%s:%d] ", __FILE__, __LINE__); \
     err(fmt, ##__VA_ARGS__);                \
     printf("\n");
 
 void err(const char *fmt, ...);
-
-#ifndef SGX
-// this API is only for non-SGX env.
-void ret_error_support(sgx_status_t ret);
-#endif
 
 class Param {
    public:

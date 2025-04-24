@@ -1,7 +1,7 @@
 #ifndef SGXSECURERAG_H
 #define SGXSECURERAG_H
 
-#include "data.h"
+#include "core.h"
 
 void initSGX();
 

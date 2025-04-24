@@ -38,12 +38,11 @@
 #include <cstdlib>
 #define MAX_PATH FILENAME_MAX
 
-#include "App.h"
+#include "app.h"
 #include "Enclave_u.h"
-#include "Model.h"
 #include "sgx_uae_service.h"
 #include "sgx_urts.h"
-#include "sgxsecurerag.h"
+#include "sgx_securerag.h"
 
 /* Global EID shared by multiple threads */
 sgx_enclave_id_t global_eid = 0;

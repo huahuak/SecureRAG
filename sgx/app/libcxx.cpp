@@ -36,14 +36,10 @@
 #include <thread>
 #include <vector>
 
-#include "../App.h"
+#include "app.h"
 #include "Enclave_u.h"
-#include "constant.h"
-#include "data.h"
-#include "func.h"
-#include "operator.h"
 #include "sgx_error.h"
-#include "utils.h"
+#include "core.h"
 
 void ecall_libcxx_functions(void) {
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
@@ -61,7 +57,7 @@ TensorRef sgxCopyTensorToSGX(Tensor &tensor) {
                                const_cast<long *>(tensor.dim.data()),
                                tensor.dim.size(), &tensorRefId);
     if (ret != SGX_SUCCESS) {
-        ret_error_support(ret);
+        print_error_message(ret);
         err("ecallCopyTensorToSGX FAILED, [ERR CODE]: %d\n", ret);
     }
     return TensorRef(tensorRefId, tensor.elementSize);
@@ -77,7 +73,7 @@ Tensor sgxCopyTensorFromSGX(TensorRef ref) {
     ret = ecallCopyTensorFromSGX(global_eid, ref.id, mem, &siz, &typ, dim,
                                  &offset);
     if (ret != SGX_SUCCESS) {
-        ret_error_support(ret);
+        print_error_message(ret);
         err("ecallCopyTensorToSGX FAILED, [ERR CODE]: %d\n", ret);
     }
     return Tensor(mem, siz, Typ(typ), std::vector<long>(dim, dim + offset));
@@ -105,7 +101,7 @@ void sgxSecureLinear(float *input, float *weight, float *bias, float *output,
                            param.offset.data(), param.offset.size(),
                            (void *)output, outsize);
     if (ret != SGX_SUCCESS) {
-        ret_error_support(ret);
+        print_error_message(ret);
         err("ecallSGXOperator FAILED, [ERR CODE]: %d\n", ret);
     }
 }
@@ -142,7 +138,7 @@ void sgxSecureAttention(float *q, float *k, float *out, float *qw, float *qb,
                            param.offset.data(), param.offset.size(),
                            (void *)out, outsize);
     if (ret != SGX_SUCCESS) {
-        ret_error_support(ret);
+        print_error_message(ret);
         err("ecallSGXOperator FAILED, [ERR CODE]: %d\n", ret);
     }
 }

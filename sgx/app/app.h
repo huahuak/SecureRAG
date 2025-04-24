@@ -65,4 +65,6 @@ void ecall_libcxx_functions(void);
 }
 #endif
 
+void print_error_message(sgx_status_t ret);
+
 #endif /* !_APP_H_ */

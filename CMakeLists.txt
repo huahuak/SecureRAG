@@ -16,8 +16,9 @@ else()
 endif()
 set(SGX_INCLUDE /opt/intel/sgxsdk/include)
 get_filename_component(ENCLAVE_EDL "sgx/enclave/Enclave.edl" ABSOLUTE)
-get_filename_component(INCLUDE "include" ABSOLUTE)
 get_filename_component(EDL_SEARCH_PATHS "sgx/enclave" ABSOLUTE)
+get_filename_component(INCLUDE "include" ABSOLUTE)
+get_filename_component(LIB "lib" ABSOLUTE)
 
 # module
 set(CORE core)
@@ -29,3 +30,10 @@ add_subdirectory(sgx)
 
 set(TORCH_SECURERAG_LIB torch_securerag)
 add_subdirectory(ext)
+
+# install
+install(TARGETS
+    ${CORE} ${SGX_CORE} ${SGX_RAG_LIB} ${TORCH_SECURERAG_LIB}
+    DESTINATION
+    ${LIB}
+)

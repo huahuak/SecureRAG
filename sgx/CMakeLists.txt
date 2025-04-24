@@ -10,7 +10,7 @@ set(APP_SRCS
 )
 
 add_untrusted_library(${SGX_RAG_LIB} SHARED
-    SRCS ${SRCS}
+    SRCS ${APP_SRCS}
     EDL ${ENCLAVE_EDL}
     EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS}
 )
@@ -18,7 +18,11 @@ target_link_libraries(${SGX_RAG_LIB} ${CORE})
 target_link_directories(${SGX_RAG_LIB} PRIVATE
     app
 )
+target_include_directories(${SGX_RAG_LIB} PRIVATE
+    ${INCLUDE}/core
+)
 add_dependencies(${SGX_RAG_LIB} enclave-sign)
+
 
 # ENCLAVE
 set(ENCLAVE_SRCS

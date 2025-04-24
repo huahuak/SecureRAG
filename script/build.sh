@@ -8,7 +8,7 @@ install_core() {
     echo "***********************************************"
     install_sgx_api() {
         if [ ! -d "include/sgx" ]; then
-            mkdir -p "include/sgx"
+            mkdir "include/sgx"
         fi
 
         cp -u sgx/enclave/enclave.h include/sgx
@@ -16,7 +16,7 @@ install_core() {
     }
     install_core_include() {
         if [ ! -d "include/core" ]; then
-            mkdir -p "include/core"
+            mkdir "include/core"
         fi
 
         cp -u core/include/* include/core
@@ -31,7 +31,7 @@ install_sgx() {
     echo "***********************************************"
     install_sgx_include() {
         if [ ! -d "include/sgx" ]; then
-            mkdir -p "include/sgx"
+            mkdir "include/sgx"
         fi
 
         cp -u sgx/app/sgx_securerag.h include/sgx
