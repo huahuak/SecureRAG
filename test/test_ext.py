@@ -3,6 +3,7 @@ import random
 import torch
 import torch.nn.functional as F
 from test.test_base import TestConfigLoggerBase
+from transformers.modeling_bart import Attention
 
 
 class TestExt(TestConfigLoggerBase):
@@ -31,3 +32,22 @@ class TestExt(TestConfigLoggerBase):
         out = self.srag.secureLinear(a, b, c)
         ans = F.linear(a, b, c)
         self.assertTrue(torch.allclose(out, ans, atol=1e-4))
+
+    def test_attention(self):
+        embed_dim = 768
+        heads = 4
+        class AttentionWrapper(Attention):
+            def forward(self, query, key, key_padding_mask = None, layer_state = None, attn_mask = None, output_attentions=False):
+                return super().forward(query, key, key_padding_mask, layer_state, attn_mask, output_attentions)[0]
+
+        attn = AttentionWrapper(embed_dim=embed_dim, num_heads=heads)
+        attn.eval()
+        bsz = 8
+        tgtlen = 4
+        input = torch.rand(embed_dim * bsz * tgtlen).view(tgtlen, bsz, embed_dim)
+        key = input
+        output = attn(input, key)
+        model = torch.jit.trace(attn, (input, key))
+        model.save("attn.pt")
+
+        

@@ -31,6 +31,8 @@ add_subdirectory(sgx)
 set(TORCH_SECURERAG_LIB torch_securerag)
 add_subdirectory(ext)
 
+add_subdirectory(jit)
+
 # install
 install(TARGETS
     ${CORE} ${SGX_CORE} ${SGX_RAG_LIB} ${TORCH_SECURERAG_LIB}
