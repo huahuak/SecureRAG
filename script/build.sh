@@ -53,6 +53,10 @@ build() {
     install_core &&
         install_sgx &&
         install_ext
+    echo "***********************************************"
+    echo "****             Install Other             ****"
+    echo "***********************************************"
+        make -C build
 }
 
 do_cmake &&
