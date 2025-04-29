@@ -18,26 +18,14 @@ class RAGSequence(transformers.RagSequenceForGeneration):
         retriever: Optional = None,
         **kwargs,
     ):
-        assert config is not None or (
-            question_encoder is not None and generator is not None
-        ), "Either a configuration or an encoder and a generator has to be provided."
-
-        if config is None:
-            config = RagConfig.from_encoder_generator_configs(
-                question_encoder.config, generator.config, **kwargs
-            )
-        super().__init__(config)
-
-        # instantiate model
-        self.rag = RagModel(
-            config=config,
+        super().__init__(
+            config,
             question_encoder=question_encoder,
             generator=generator,
             retriever=retriever,
         )
-        self.__encoder_with_profile()
 
-    def __encoder_with_profile(self):
+    def wrap_encoder_with_profile(self):
         class EncoderWithProfile(torch.nn.Module):
             def __init__(self, encoder):
                 super().__init__()

@@ -83,9 +83,9 @@ class BatchData:
     question_masks: Optional = None
     passage_ids: Optional = None
     passage_masks: Optional = None
-    scores: Optional = None
     private_passage_ids: Optional = None
     private_passage_masks: Optional = None
+    scores: Optional = None
 
 
 def tokenizer_encode_batch(batch_text_passages, tokenizer, max_length):
@@ -253,16 +253,6 @@ class SecureRAGCollator(object):
     def __call__(self, batch):
         assert batch[0]["target"] != None
         index = torch.tensor([ex["index"] for ex in batch])
-        question = [ex["question"] for ex in batch]
-        question = self.tokenizer.batch_encode_plus(
-            question,
-            max_length=self.answer_maxlength if self.answer_maxlength > 0 else None,
-            pad_to_max_length=True,
-            return_tensors="pt",
-            truncation=True if self.answer_maxlength > 0 else False,
-        )
-        questionIds = question["input_ids"]
-        questionMask = question["attention_mask"].bool()
         target = [ex["target"] for ex in batch]
         target = self.tokenizer.batch_encode_plus(
             target,
@@ -275,9 +265,11 @@ class SecureRAGCollator(object):
         target_mask = target["attention_mask"].bool()
         target_ids = target_ids.masked_fill(~target_mask, -100)
 
-        private_passages = []
         public_passages = []
+        private_passages = []
         for example in batch:
+            public_tmp = []
+            private_tmp = []
             if example["passages"] is None:
                 return example["question"]
             size = len(example["passages"])
@@ -294,13 +286,15 @@ class SecureRAGCollator(object):
                 + " {}"
             )
             for t in example["passages"][0:private_size]:
-                private_passages.append(
+                private_tmp.append(
                     f.format(example["question"], t["title"], t["text"])
                 )
             for t in example["passages"][private_size:size]:
-                public_passages.append(
+                public_tmp.append(
                     f.format(example["question"], t["title"], t["text"])
                 )
+            public_passages.append(public_tmp)
+            private_passages.append(private_tmp)
 
         # passage_ids_size is (batchsize * publicpassagesize * textmaxlength)
         passage_ids, passage_masks = tokenizer_encode_batch(
