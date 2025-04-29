@@ -6,6 +6,7 @@
 /log
 /build
 /.cache
+/tmp
 
 lib/*
 

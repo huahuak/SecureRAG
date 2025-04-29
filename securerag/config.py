@@ -20,7 +20,7 @@ class Config:
     def __add_options(self):
         self.parser.add_argument("--load_size", type=int, default=100)
         self.parser.add_argument("--eval_print_freq", type=int, default=100)
-        self.parser.add_argument("--log_path", type=str, default="./log/stdout")
+        self.parser.add_argument("--log_path", type=str, default="./log/stdout.log")
 
     def __add_generator_options(self):
         self.parser.add_argument("--n_context", type=int, default=100)

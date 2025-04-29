@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 import json
 import random
+from typing import Optional
 import torch
 
 from securerag.profiler import profiler
@@ -72,7 +74,19 @@ class Dataset(torch.utils.data.Dataset):
         return self.data[index]
 
 
-def encoder_batch(batch_text_passages, tokenizer, max_length):
+@dataclass
+class BatchData:
+    index: Optional = None
+    target_ids: Optional = None
+    target_mask: Optional = None
+    question_ids: Optional = None
+    question_masks: Optional = None
+    passage_ids: Optional = None
+    passage_masks: Optional = None
+    scores: Optional = None
+
+
+def tokenizer_encode_batch(batch_text_passages, tokenizer, max_length):
     passage_ids, passage_masks = [], []
     for k, text_passages in enumerate(batch_text_passages):
         p = tokenizer.batch_encode_plus(
@@ -126,12 +140,7 @@ class RAGSequenceCollator(object):
                 if prefix is None:
                     prefix = ""
                 out = (
-                    prefix
-                    + doc_title
-                    + title_sep
-                    + doc_text
-                    + doc_sep
-                    + input_string
+                    prefix + doc_title + title_sep + doc_text + doc_sep + input_string
                 ).replace("  ", " ")
                 return out
 
@@ -145,24 +154,24 @@ class RAGSequenceCollator(object):
             ]
 
         text_passages = [append_question(example) for example in batch]
-        passage_ids, passage_masks = encoder_batch(
+        passage_ids, passage_masks = tokenizer_encode_batch(
             text_passages, self.tokenizer, self.text_maxlength
         )
         questions = [[ex["question"]] for ex in batch]
-        question_ids, question_masks = encoder_batch(
+        question_ids, question_masks = tokenizer_encode_batch(
             questions, self.tokenizer, self.text_maxlength
         )
         scores = torch.stack([ex["scores"] for ex in batch])
 
-        return (
-            index,
-            target_ids,
-            target_mask,
-            question_ids,
-            question_masks,
-            passage_ids,
-            passage_masks,
-            scores
+        return BatchData(
+            index=index,
+            target_ids=target_ids,
+            target_mask=target_mask,
+            question_ids=question_ids,
+            question_masks=question_masks,
+            passage_ids=passage_ids,
+            passage_masks=passage_masks,
+            scores=scores,
         )
 
 
@@ -208,11 +217,25 @@ class FiDT5Collator(object):
             ]
 
         text_passages = [append_question(example) for example in batch]
-        passage_ids, passage_masks = encoder_batch(
+        passage_ids, passage_masks = tokenizer_encode_batch(
             text_passages, self.tokenizer, self.text_maxlength
         )
+        questions = [[ex["question"]] for ex in batch]
+        question_ids, question_masks = tokenizer_encode_batch(
+            questions, self.tokenizer, self.text_maxlength
+        )
+        scores = torch.stack([ex["scores"] for ex in batch])
 
-        return (index, target_ids, target_mask, passage_ids, passage_masks)
+        return BatchData(
+            index=index,
+            target_ids=target_ids,
+            target_mask=target_mask,
+            question_ids=question_ids,
+            question_masks=question_masks,
+            passage_ids=passage_ids,
+            passage_masks=passage_masks,
+            scores=scores,
+        )
 
 
 class SecureRAGCollator(object):
@@ -270,10 +293,10 @@ class SecureRAGCollator(object):
                 )
             )
         # passage_ids size is (batchSize * passageSize * textMaxLength)
-        passage_ids, passage_masks = encoder_batch(
+        passage_ids, passage_masks = tokenizer_encode_batch(
             publicPassages, self.tokenizer, self.text_maxlength
         )
-        privatePassageIds, privatePassageMasks = encoder_batch(
+        privatePassageIds, privatePassageMasks = tokenizer_encode_batch(
             privatePassages, self.tokenizer, self.text_maxlength
         )
 

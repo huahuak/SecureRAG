@@ -51,7 +51,8 @@ class FiDT5(transformers.T5ForConditionalGeneration):
 
     # We need to resize the inputs here, as the generate method expect 2D tensors
     @profiler("FiDT5.generate")
-    def generate(self, input_ids, attention_mask, max_length):
+    def generate(self, input_ids, attention_mask, max_length, **kwargs):
+        # input_ids: (bsz, n_passages, passage_dim)
         self.encoder.n_passages = input_ids.size(1)
         return super().generate(
             input_ids=input_ids.view(input_ids.size(0), -1),
@@ -143,6 +144,7 @@ class EncoderWrapper(torch.nn.Module):
         self.encoder = encoder
         apply_checkpoint_wrapper(self.encoder, use_checkpoint)
 
+    @profiler("FiDT5.Encoder")
     def forward(
         self,
         input_ids=None,

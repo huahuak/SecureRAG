@@ -35,6 +35,32 @@ class RAGSequence(transformers.RagSequenceForGeneration):
             generator=generator,
             retriever=retriever,
         )
+        self.__encoder_with_profile()
+
+    def __encoder_with_profile(self):
+        class EncoderWithProfile(torch.nn.Module):
+            def __init__(self, encoder):
+                super().__init__()
+                self.encoder = encoder
+
+            @profiler("RAGSequence.Encoder")
+            def forward(
+                self,
+                input_ids,
+                attention_mask=None,
+                output_attentions=False,
+                output_hidden_states=False,
+                return_dict=False,
+            ):
+                return self.encoder.forward(
+                    input_ids,
+                    attention_mask,
+                    output_attentions,
+                    output_hidden_states,
+                    return_dict,
+                )
+
+        self.generator.model.encoder = EncoderWithProfile(self.generator.model.encoder)
 
     @torch.no_grad()
     @profiler("RAGSequence.generate")
@@ -60,7 +86,9 @@ class RAGSequence(transformers.RagSequenceForGeneration):
             if num_return_sequences is not None
             else self.config.num_return_sequences
         )
-        num_beams = num_beams if num_beams is not None else self.config.num_beams
+        # num_beams = num_beams if num_beams is not None else self.config.num_beams
+        # NOTE we limit beam search
+        num_beams = 1
 
         assert (
             context_input_ids is not None
@@ -79,10 +107,15 @@ class RAGSequence(transformers.RagSequenceForGeneration):
                 index * self.config.n_docs : (index + 1) * self.config.n_docs
             ]  # (n_docs, max_len)
 
-            output_sequences = self.generator.generate(
-                generator_input_ids,
-                **kwargs,
-            )  # n_docs * n_beam, tgt_len
+            @profiler("RAGSequence.candidate_generate")
+            def candidate_generate():
+                candidates = self.generator.generate(
+                    generator_input_ids,
+                    **kwargs,
+                )  # n_docs * n_beam, tgt_len
+                return candidates
+
+            output_sequences = candidate_generate()
             if do_deduplication:
                 # do_deduplication, max_output_len
                 output_sequences = torch.stack(
@@ -97,17 +130,18 @@ class RAGSequence(transformers.RagSequenceForGeneration):
             # do tensor reshape
             rag_model_context_input_ids = generator_input_ids.repeat(
                 len(output_sequences), 1
-            ) # (candidate_size * n_docs, dim)
+            )  # (candidate_size * n_docs, dim)
             rag_model_context_masks = context_masks[
                 index * self.config.n_docs : (index + 1) * self.config.n_docs
             ]
             rag_model_context_masks = rag_model_context_masks.repeat(
                 len(output_sequences), 1
-            ) # (candidate_size * n_docs, dim)
+            )  # (candidate_size * n_docs, dim)
             rag_model_scores = doc_scores[index : (index + 1)]
             rag_model_scores = rag_model_scores.repeat(
                 len(output_sequences), 1
             )  # (candidate_size, n_docs)
+
             # calculate the margin loss
             @profiler("RAGSequence.margin_forward")
             def margin_forward():
@@ -120,6 +154,7 @@ class RAGSequence(transformers.RagSequenceForGeneration):
                     exclude_bos_score=True,
                 )
                 return outputs
+
             outputs = margin_forward()
             # choose the best one
             top_cand_inds = (-outputs["loss"]).topk(num_doc_return_sequences)[1]

@@ -3,6 +3,7 @@ import random
 import torch
 import torch.nn.functional as F
 from test.test_base import TestConfigLoggerBase
+from transformers.modeling_bart import Attention
 
 
 class TestExt(TestConfigLoggerBase):
@@ -31,3 +32,14 @@ class TestExt(TestConfigLoggerBase):
         out = self.srag.secureLinear(a, b, c)
         ans = F.linear(a, b, c)
         self.assertTrue(torch.allclose(out, ans, atol=1e-4))
+
+    def test_attention(self):
+        embed_dim = 768
+        heads = 4
+        attn = Attention(embed_dim=embed_dim, num_heads=heads)
+        attn.eval()
+        bsz = 8
+        tgtlen = 4
+        input = torch.rand(embed_dim * bsz * tgtlen).view(tgtlen, bsz, embed_dim)
+        key = input
+        output = attn(input, key)
