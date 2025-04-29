@@ -11,7 +11,7 @@ from securerag import data
 import securerag.eval
 import securerag.models
 
-from securerag.models import FiDT5, RAGSequence
+from securerag.models import FiDT5, RAGSequence, OutsocringSecureModel
 from torch.profiler import (
     profile,
     ProfilerActivity,
@@ -34,7 +34,7 @@ class TestModelBase(TestConfigLoggerBase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        # cls.config.device = "cpu"
+        cls.config.device = "cpu"
         cls.config.n_context = 10
         cls.config.batch_size = 1
 
@@ -175,6 +175,11 @@ class TestFIDT5(TestModelBase):
             cfg=self.config,
         )
 
+    def test_outsocring_model(self):
+        assert self.config.device == "cpu", "make sure that device is cpu!"
+        self.model = OutsocringSecureModel(self.model)
+        self.test_generate()
+
 
 class TestRAGSequence(TestModelBase):
     def setUp(self):
@@ -314,3 +319,9 @@ class TestRAGSequenceT5(TestModelBase):
             ans = self.tokenizer.batch_decode(output, skip_special_tokens=True)
             print(ans)
             print(f"elapsed time : {time.time() - start: .3f} sec")
+
+    def test_outsocring_model(self):
+        assert self.config.device == "cpu", "make sure that device is cpu!"
+        self.model = OutsocringSecureModel(self.model)
+        self.test_generate()
+

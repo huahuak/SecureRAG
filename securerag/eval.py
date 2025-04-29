@@ -30,7 +30,7 @@ def get_exact_match_score(answer, targets):
     return max([normalize_answer == normalize(it) for it in targets])
 
 
-def evaluate(model, dataset, dataloader, tokenizer, cfg=None):
+def evaluate(model, dataset, dataloader, tokenizer, cfg):
     loss, curr_loss = 0.0, 0.0
     model.eval()
     total = 0
@@ -39,6 +39,7 @@ def evaluate(model, dataset, dataloader, tokenizer, cfg=None):
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
             # TODO: dispatcher
+            device = cfg.device
             (
                 idx,
                 question_ids,
@@ -61,11 +62,13 @@ def evaluate(model, dataset, dataloader, tokenizer, cfg=None):
                     max_length=50,
                 )
             elif isinstance(model, RagSequenceForGeneration):
-                question_ids = question_ids.cuda().squeeze(1)
-                question_masks = question_masks.cuda().squeeze(1)
-                context_ids = context_ids.cuda().view(-1, context_ids.size(-1))
-                context_masks = context_masks.cuda().view(-1, context_masks.size(-1))
-                scores = scores.cuda().view(-1, scores.size(-1))
+                question_ids = question_ids.to(device).squeeze(1)
+                question_masks = question_masks.to(device).squeeze(1)
+                context_ids = context_ids.to(device).view(-1, context_ids.size(-1))
+                context_masks = context_masks.to(device).view(
+                    -1, context_masks.size(-1)
+                )
+                scores = scores.to(device).view(-1, scores.size(-1))
                 outputs = model.generate(
                     input_ids=question_ids,
                     attention_mask=question_masks,
