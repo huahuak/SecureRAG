@@ -9,7 +9,7 @@
 /tmp
 
 
-*.so
+# *.so
 *.a
 
 __pycache__
