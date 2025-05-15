@@ -4,6 +4,12 @@ project(Ext LANGUAGES CXX)
 
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
 execute_process(
+  COMMAND python3 -c "import sys; print(sys.executable)"
+  OUTPUT_VARIABLE PYTHON_PATH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+message(STATUS "CMake is using Python: ${PYTHON_PATH}")
+execute_process(
     COMMAND
     ${Python_EXECUTABLE} -c
     "import torch.utils; print(torch.utils.cmake_prefix_path)"
