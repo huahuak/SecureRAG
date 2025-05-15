@@ -1,0 +1,27 @@
+includes:
+  - base.yaml
+targets:
+  - target: /bin
+    createlinks:
+      - src: /opt/python-occlum/bin/python3
+        linkname: python3
+  # python packages
+  - target: /opt
+    copy: 
+      - dirs:
+          - /root/miniconda3/envs/python-occlum
+  # python code
+  - target: /
+    copy:
+      - dirs: 
+          - /root/Projects/SecureRAG/data
+          - /root/Projects/SecureRAG/models
+          - /root/Projects/SecureRAG/securerag
+          - /root/Projects/SecureRAG/test
+          - /root/Projects/SecureRAG/sgx
+          - /root/Projects/SecureRAG/core
+          - /root/Projects/SecureRAG/ext
+          - /root/Projects/SecureRAG/script
+          - /root/Projects/SecureRAG/cmake
+          - /root/Projects/SecureRAG/include
+          - /root/Projects/SecureRAG/log

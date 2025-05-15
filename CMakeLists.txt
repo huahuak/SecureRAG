@@ -8,7 +8,7 @@ set(CMAKE_CUDA_ARCHITECTURES 86)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
 # SGX
-set(SGX_HW OFF)
+set(SGX_HW ON)
 set(SGX_MODE Debug)
 if(SGX_HW AND SGX_MODE STREQUAL "Release")
     get_filename_component(LDS "sgx/enclave/Enclave.lds" ABSOLUTE)

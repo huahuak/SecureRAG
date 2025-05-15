@@ -7,7 +7,7 @@
 /build
 /.cache
 /tmp
-
+/occlum_instance
 /lib/dnnl/*
 
 *.so
