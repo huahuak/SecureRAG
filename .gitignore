@@ -8,7 +8,6 @@
 /.cache
 /tmp
 
-lib/*
 
 *.so
 *.a
