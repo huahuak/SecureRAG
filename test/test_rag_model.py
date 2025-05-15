@@ -40,9 +40,9 @@ class TestModelBase(TestConfigLoggerBase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.config.device = "cpu"
+        # cls.config.device = "cpu"
         cls.config.n_context = 10
-        cls.config.batch_size = 1
+        cls.config.batch_size = 10
 
     def setUp(self):
         super().setUp()
@@ -270,7 +270,6 @@ class TestRAGSequenceT5(TestModelBase):
             self.model: RAGSequence = model_cls.from_pretrained(
                 checkpoint_path, n_docs=self.config.n_context
             ).to(self.config.device)
-            self.model.rag.generator = generator.to(self.config.device)
             self.model.wrap_encoder_with_profile()
             self.model.eval()
         # prepare data
@@ -364,6 +363,7 @@ class TestFGORAGSequenceT5(TestModelBase):
                     tokenizer=self.tokenizer,
                     text_maxlength=self.config.text_maxlength,
                     answer_maxlength=self.config.answer_maxlength,
+                    private_passage_ratio=self.config.private_passage_ratio
                 ),
             )
             self.record1 = next(iter(data_loader))
