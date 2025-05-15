@@ -8,8 +8,9 @@
 /.cache
 /tmp
 
+/lib/dnnl/*
 
-# *.so
+*.so
 *.a
 
 __pycache__
