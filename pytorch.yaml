@@ -25,3 +25,7 @@ targets:
           - /root/Projects/SecureRAG/cmake
           - /root/Projects/SecureRAG/include
           - /root/Projects/SecureRAG/log
+  - target: /etc
+    copy:
+      - files:
+        - /etc/passwd

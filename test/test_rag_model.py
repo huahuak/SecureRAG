@@ -40,7 +40,7 @@ class TestModelBase(TestConfigLoggerBase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        # cls.config.device = "cpu"
+        cls.config.device = "cpu"
         cls.config.n_context = 10
         cls.config.batch_size = 10
 
