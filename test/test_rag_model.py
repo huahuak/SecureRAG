@@ -29,7 +29,7 @@ from test.test_base import TestConfigLoggerBase
 
 
 NONDEBUG = False
-ENABLE_PROFILER = True
+ENABLE_PROFILER = False
 ENABLE_C_PROFILER = False
 
 
@@ -94,7 +94,7 @@ class TestFIDT5(TestModelBase):
         datas = data.load(path=path, cfg=self.config)
         dataset = data.Dataset(data=datas, n_context=self.config.n_context)
         self.tokenizer: transformers.T5Tokenizer = (
-            transformers.T5Tokenizer.from_pretrained("t5-base", return_dict=False)
+            transformers.T5Tokenizer.from_pretrained("models/t5-base", return_dict=False)
         )
         data_loader = torch.utils.data.dataloader.DataLoader(
             dataset=dataset,
@@ -121,7 +121,10 @@ class TestFIDT5(TestModelBase):
         self.model.unwrap_encoder()
         new = self.model.state_dict()
         print(new)
-        self.model.save_pretrained("t5")
+        self.model.save_pretrained("models/t5")
+    
+    def test_copy_tokenizer(self):
+        self.tokenizer.save_pretrained("models/t5-base")
 
     def test_generate(self):
         # generate

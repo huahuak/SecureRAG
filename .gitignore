@@ -8,7 +8,8 @@
 /.cache
 /tmp
 /occlum_instance
-/lib/dnnl/*
+
+lib/*
 
 *.so
 *.a
