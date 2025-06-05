@@ -44,8 +44,8 @@ class OutsourcingSecureModel(torch.nn.Module):
         return self.model.generate(*args, **kwargs)
 
 
-# method 2: fine-grained offloading for rag-sequence
-class FGORAGSequence(torch.nn.Module):
+# method 2: privacy-aware module offloading for rag-sequence
+class PAMLRAGSequence(torch.nn.Module):
     def __init__(self, model: RAGSequence):
         super().__init__()
         self.model = model.to("cpu")
@@ -56,7 +56,7 @@ class FGORAGSequence(torch.nn.Module):
         self.threadpool = ThreadPoolExecutor(max_workers=3)
 
     @torch.no_grad()
-    @profiler("FGORAGSequence.generate")
+    @profiler("PAMLRAGSequence.generate")
     def generate(
         self,
         input_ids=None,
@@ -98,7 +98,7 @@ class FGORAGSequence(torch.nn.Module):
                 index * n_private_passage : (index + 1) * n_private_passage
             ]
 
-            @profiler("FGORAGSequence.candidate_generate")
+            @profiler("PAMLRAGSequence.candidate_generate")
             def candidate_generate(generator, generator_input_ids):
                 candidates = generator.generate(
                     generator_input_ids,
@@ -170,7 +170,7 @@ class FGORAGSequence(torch.nn.Module):
             )  # (candidate_size, n_docs)
 
             # calculate the margin loss
-            @profiler("FGORAGSequence.margin_forward")
+            @profiler("PAMLRAGSequence.margin_forward")
             def margin_forward():
                 outputs = self.model(
                     context_input_ids=rag_model_context_input_ids,
@@ -193,7 +193,7 @@ class FGORAGSequence(torch.nn.Module):
         )
 
 
-# method 3: fine-grained offloading for FiD
-class FGOFiDT5(torch.nn.Module):
+# method 3: privacy-aware module offloading for FiD
+class PAMLFiDT5(torch.nn.Module):
     def __init__(self, model: FiDT5):
         self.model = model.to("cpu")

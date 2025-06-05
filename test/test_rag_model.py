@@ -15,8 +15,8 @@ from securerag.models import (
     FiDT5,
     RAGSequence,
     OutsourcingSecureModel,
-    FGOFiDT5,
-    FGORAGSequence,
+    PAMLFiDT5,
+    PAMLRAGSequence,
 )
 from torch.profiler import (
     profile,
@@ -336,7 +336,7 @@ class TestRAGSequenceT5(TestModelBase):
         self.test_generate()
 
 
-class TestFGORAGSequenceT5(TestModelBase):
+class TestPAMLRAGSequenceT5(TestModelBase):
     def setUp(self):
         # preparemodel
         with record_function("prepare_model"):
@@ -350,7 +350,7 @@ class TestFGORAGSequenceT5(TestModelBase):
             ).to(self.config.device)
             self.model.rag.generator = generator.to(self.config.device)
             self.model.eval()
-            self.model: FGORAGSequence = FGORAGSequence(self.model)
+            self.model: PAMLRAGSequence = PAMLRAGSequence(self.model)
         # prepare data
         with record_function("prepare_data"):
             path = "data/open_domain_data/NQ/debug.json"
