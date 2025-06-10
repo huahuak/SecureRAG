@@ -19,14 +19,14 @@ def init_logger(filename=None):
 def redirectPrintToLogger():
     class PrintToLogger:
         def __init__(self, logger, level=logging.INFO):
-            self.logger = logger
+            self.logger : logging.Logger= logger
             self.level = level
             self._buffer = ""
 
         def write(self, message):
             message = message.strip()
             if message:  # 过滤空行
-                self.logger.log(self.level, f"\n{message}")
+                self.logger.log(self.level, f"{message}", stacklevel=2)
 
         def flush(self):
             pass  # logging 本身不需要 flush，这里留空
