@@ -7,6 +7,11 @@ import torch
 from securerag.profiler import profiler
 
 
+class PreProcess:
+    def __init__(self, encoder):
+        self.encoder = encoder.eval()
+
+
 def load(path: str, cfg) -> dict:
     examples = []
     with open(path, "r") as file:
@@ -240,14 +245,14 @@ class FiDT5Collator(object):
         )
 
 
-class SecureRAGCollator(object):
+class SecureRAGUsingT5EncodingCollator(object):
     def __init__(
         self, text_maxlength, tokenizer, answer_maxlength=20, private_passage_ratio=0.1
     ):
         self.tokenizer = tokenizer
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
-        self.privateRatio = private_passage_ratio
+        self.private_ratio = private_passage_ratio
 
     @profiler("SecureRAGCollator")
     def __call__(self, batch):
@@ -273,7 +278,7 @@ class SecureRAGCollator(object):
             if example["passages"] is None:
                 return example["question"]
             size = len(example["passages"])
-            private_size = int(size * self.privateRatio)
+            private_size = int(size * self.private_ratio)
             question_prefix = "question:"
             title_prefix = "title:"
             passage_prefix = "context:"
@@ -286,13 +291,9 @@ class SecureRAGCollator(object):
                 + " {}"
             )
             for t in example["passages"][0:private_size]:
-                private_tmp.append(
-                    f.format(example["question"], t["title"], t["text"])
-                )
+                private_tmp.append(f.format(example["question"], t["title"], t["text"]))
             for t in example["passages"][private_size:size]:
-                public_tmp.append(
-                    f.format(example["question"], t["title"], t["text"])
-                )
+                public_tmp.append(f.format(example["question"], t["title"], t["text"]))
             public_passages.append(public_tmp)
             private_passages.append(private_tmp)
 

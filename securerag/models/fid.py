@@ -51,14 +51,23 @@ class FiDT5(transformers.T5ForConditionalGeneration):
 
     # We need to resize the inputs here, as the generate method expect 2D tensors
     @profiler("FiDT5.generate")
-    def generate(self, input_ids, attention_mask, max_length, **kwargs):
+    def generate(self, input_ids, attention_mask, max_length, return_scores=False, **kwargs):
+        self.tmp_scores = []
         # input_ids: (bsz, n_passages, passage_dim)
         self.encoder.n_passages = input_ids.size(1)
-        return super().generate(
+        output = super().generate(
             input_ids=input_ids.view(input_ids.size(0), -1),
             attention_mask=attention_mask.view(attention_mask.size(0), -1),
             max_length=max_length,
         )
+        if return_scores:
+            return (output, self.tmp_scores)
+        else:
+            return output
+
+    def postprocess_next_token_scores(self, scores, **kwargs):
+        self.tmp_scores.append(scores)
+        return super().postprocess_next_token_scores(scores=scores, **kwargs)
 
     def wrap_encoder(self, use_checkpoint=False):
         """

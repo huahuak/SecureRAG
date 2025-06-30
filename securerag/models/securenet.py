@@ -197,3 +197,8 @@ class PAMLRAGSequence(torch.nn.Module):
 class PAMLFiDT5(torch.nn.Module):
     def __init__(self, model: FiDT5):
         self.model = model.to("cpu")
+        self.untrusted_encoder = self.model.get_encoder().to("cpu")
+        self.trusted_encoder = copy.deepcopy(self.untrusted_encoder)
+
+    def get_encoder(self):
+        return self.encoder

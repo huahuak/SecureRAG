@@ -15,7 +15,7 @@ class RAGSequence(transformers.RagSequenceForGeneration):
         config: Optional[PretrainedConfig] = None,
         question_encoder: Optional[PreTrainedModel] = None,
         generator: Optional[PreTrainedModel] = None,
-        retriever: Optional = None,
+        retriever: Optional = None, # type: ignore
         **kwargs,
     ):
         super().__init__(
@@ -89,65 +89,87 @@ class RAGSequence(transformers.RagSequenceForGeneration):
         kwargs["num_return_sequences"] = num_beams
         kwargs["attention_mask"] = None
 
-        for index in range(len(input_ids)):
-            # first, generate beams from documents:
-            generator_input_ids = context_input_ids[
-                index * self.config.n_docs : (index + 1) * self.config.n_docs
-            ]  # (n_docs, max_len)
+        def generate():
+            for index in range(len(input_ids)):
+                # first, generate beams from documents:
+                generator_input_ids = context_input_ids[
+                    index * self.config.n_docs : (index + 1) * self.config.n_docs
+                ]  # (n_docs, max_len)
 
+                @profiler("RAGSequence.candidate_generate")
+                def candidate_generate():
+                    candidates = self.generator.generate(
+                        generator_input_ids,
+                        **kwargs,
+                    )  # n_docs * n_beam, tgt_len
+                    return candidates
+
+                output_sequences = candidate_generate()
+                if do_deduplication:
+                    # do_deduplication, max_output_len
+                    output_sequences = torch.stack(
+                        list({str(k.tolist()): k for k in output_sequences}.values())
+                    )
+
+                # then, run model forwards to get nll scores:
+                # new_input_ids = input_ids[index : index + 1].repeat(
+                #     len(output_sequences), 1
+                # )
+
+                # do tensor reshape
+                rag_model_context_input_ids = generator_input_ids.repeat(
+                    len(output_sequences), 1
+                )  # (candidate_size * n_docs, dim)
+                rag_model_context_masks = context_masks[
+                    index * self.config.n_docs : (index + 1) * self.config.n_docs
+                ]
+                rag_model_context_masks = rag_model_context_masks.repeat(
+                    len(output_sequences), 1
+                )  # (candidate_size * n_docs, dim)
+                rag_model_scores = doc_scores[index : (index + 1)]
+                rag_model_scores = rag_model_scores.repeat(
+                    len(output_sequences), 1
+                )  # (candidate_size, n_docs)
+
+                # calculate the margin loss
+                @profiler("RAGSequence.margin_forward")
+                def margin_forward():
+                    outputs = self(
+                        # new_input_ids,
+                        context_input_ids=rag_model_context_input_ids,
+                        context_attention_mask=rag_model_context_masks,
+                        doc_scores=rag_model_scores,
+                        labels=output_sequences,
+                        exclude_bos_score=True,
+                    )
+                    return outputs
+
+                outputs = margin_forward()
+                # choose the best one
+                top_cand_inds = (-outputs["loss"]).topk(num_doc_return_sequences)[1]
+
+                # add hypothesis
+                hypos.append(output_sequences[top_cand_inds])
+
+            return self._cat_and_pad(hypos, pad_token_id=self.config.generator.pad_token_id)
+
+        def batch_generate():
             @profiler("RAGSequence.candidate_generate")
             def candidate_generate():
                 candidates = self.generator.generate(
-                    generator_input_ids,
+                    context_input_ids,
                     **kwargs,
-                )  # n_docs * n_beam, tgt_len
+                )  # bsz * n_docs * n_beam, tgt_len
                 return candidates
 
             output_sequences = candidate_generate()
-            if do_deduplication:
-                # do_deduplication, max_output_len
-                output_sequences = torch.stack(
-                    list({str(k.tolist()): k for k in output_sequences}.values())
-                )
+            
+            bsz = len(input_ids)
+            n_docs = self.config.n_docs
+            # TODO idx need produced by margin
+            idx = torch.arange(0, bsz * n_docs * num_beams, n_docs, dtype=torch.int, device=output_sequences.device)
+            output_sequences = output_sequences[idx]
+            return output_sequences
 
-            # then, run model forwards to get nll scores:
-            # new_input_ids = input_ids[index : index + 1].repeat(
-            #     len(output_sequences), 1
-            # )
-
-            # do tensor reshape
-            rag_model_context_input_ids = generator_input_ids.repeat(
-                len(output_sequences), 1
-            )  # (candidate_size * n_docs, dim)
-            rag_model_context_masks = context_masks[
-                index * self.config.n_docs : (index + 1) * self.config.n_docs
-            ]
-            rag_model_context_masks = rag_model_context_masks.repeat(
-                len(output_sequences), 1
-            )  # (candidate_size * n_docs, dim)
-            rag_model_scores = doc_scores[index : (index + 1)]
-            rag_model_scores = rag_model_scores.repeat(
-                len(output_sequences), 1
-            )  # (candidate_size, n_docs)
-
-            # calculate the margin loss
-            @profiler("RAGSequence.margin_forward")
-            def margin_forward():
-                outputs = self(
-                    # new_input_ids,
-                    context_input_ids=rag_model_context_input_ids,
-                    context_attention_mask=rag_model_context_masks,
-                    doc_scores=rag_model_scores,
-                    labels=output_sequences,
-                    exclude_bos_score=True,
-                )
-                return outputs
-
-            outputs = margin_forward()
-            # choose the best one
-            top_cand_inds = (-outputs["loss"]).topk(num_doc_return_sequences)[1]
-
-            # add hypothesis
-            hypos.append(output_sequences[top_cand_inds])
-
-        return self._cat_and_pad(hypos, pad_token_id=self.config.generator.pad_token_id)
+        # return batch_generate()
+        return generate()
