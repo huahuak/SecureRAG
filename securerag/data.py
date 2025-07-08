@@ -12,12 +12,12 @@ class PreProcess:
         self.encoder = encoder.eval()
 
 
-def load(path: str, cfg) -> dict:
+def load(path: str, size) -> dict:
     examples = []
     with open(path, "r") as file:
         json_data = json.load(file)
         for k, example in enumerate(json_data):
-            if k >= cfg.load_size:
+            if k >= size:
                 break
             if not "id" in example:
                 example["id"] = k
@@ -91,6 +91,7 @@ class BatchData:
     private_passage_ids: Optional = None
     private_passage_masks: Optional = None
     scores: Optional = None
+    private_scores: Optional = None
 
 
 def tokenizer_encode_batch(batch_text_passages, tokenizer, max_length):
@@ -245,7 +246,7 @@ class FiDT5Collator(object):
         )
 
 
-class SecureRAGUsingT5EncodingCollator(object):
+class SecureRAG4T5Collator(object):
     def __init__(
         self, text_maxlength, tokenizer, answer_maxlength=20, private_passage_ratio=0.1
     ):
@@ -309,6 +310,9 @@ class SecureRAGUsingT5EncodingCollator(object):
             questions, self.tokenizer, self.text_maxlength
         )
         scores = torch.stack([ex["scores"] for ex in batch])
+        bsz = len(batch)
+        private_scores = scores[:bsz, :private_size]
+        public_scores = scores[:bsz, private_size:]
 
         return BatchData(
             index=index,
@@ -320,5 +324,6 @@ class SecureRAGUsingT5EncodingCollator(object):
             passage_masks=passage_masks,
             private_passage_ids=private_passage_ids,
             private_passage_masks=private_passage_masks,
-            scores=scores,
+            scores=public_scores,
+            private_scores=private_scores,
         )

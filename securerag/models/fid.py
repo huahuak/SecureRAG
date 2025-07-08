@@ -12,6 +12,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 import numpy as np
 
+from securerag.data import BatchData
 from securerag.profiler import profiler
 
 
@@ -48,8 +49,32 @@ class FiDT5(transformers.T5ForConditionalGeneration):
         return super().forward(
             input_ids=input_ids, attention_mask=attention_mask, **kwargs
         )
+    
+    def eval_generate(self,  batch: BatchData):
+        device = self.cfg.device
+        (
+            idx,
+            question_ids,
+            question_masks,
+            context_ids,
+            context_masks,
+            scores,
+        ) = (
+            batch.index,
+            batch.question_ids,
+            batch.question_masks,
+            batch.passage_ids,
+            batch.passage_masks,
+            batch.scores,
+        )
+        outputs = self.generate(
+            input_ids=context_ids.cuda(),
+            attention_mask=context_masks.cuda(),
+            max_length=50,
+        )
+        return outputs
 
-    # We need to resize the inputs here, as the generate method expect 2D tensors
+    # We need to reskze the inputs here, as the generate method expect 2D tensors
     @profiler("FiDT5.generate")
     def generate(self, input_ids, attention_mask, max_length, return_scores=False, **kwargs):
         self.tmp_scores = []

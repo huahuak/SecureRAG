@@ -92,7 +92,7 @@ class TestFIDT5(TestModelBase):
         self.model.eval()
         # prepare data
         path = "data/open_domain_data/NQ/dev.json"
-        datas = data.load(path=path, cfg=self.config)
+        datas = data.load(path=path, size=self.config.load_size)
         dataset = data.Dataset(data=datas, n_context=self.config.n_context)
         self.tokenizer: transformers.T5Tokenizer = (
             transformers.T5Tokenizer.from_pretrained("models/t5-base", return_dict=False)
@@ -208,7 +208,7 @@ class TestRAGSequence(TestModelBase):
         # prepare data
         with record_function("prepare_data"):
             path = "data/open_domain_data/NQ/debug.json"
-            datas = data.load(path=path, cfg=self.config)
+            datas = data.load(path=path, size=self.config.load_size)
             dataset = data.Dataset(data=datas, n_context=self.config.n_context)
             self.tokenizer = transformers.RagTokenizer.from_pretrained(
                 checkpoint_path, return_dict=False
@@ -279,7 +279,7 @@ class TestRAGSequenceT5(TestModelBase):
         # prepare data
         with record_function("prepare_data"):
             path = "data/open_domain_data/NQ/debug.json"
-            datas = data.load(path=path, cfg=self.config)
+            datas = data.load(path=path, size=self.config.load_size)
             dataset = data.Dataset(data=datas, n_context=self.config.n_context)
             self.tokenizer = transformers.T5Tokenizer.from_pretrained(
                 "t5-base", return_dict=False
@@ -355,7 +355,7 @@ class TestPAMLRAGSequenceT5(TestModelBase):
         # prepare data
         with record_function("prepare_data"):
             path = "data/open_domain_data/NQ/debug.json"
-            datas = data.load(path=path, cfg=self.config)
+            datas = data.load(path=path, size=self.config.load_size)
             dataset = data.Dataset(data=datas, n_context=self.config.n_context)
             self.tokenizer = transformers.T5Tokenizer.from_pretrained(
                 "t5-base", return_dict=False
@@ -363,7 +363,7 @@ class TestPAMLRAGSequenceT5(TestModelBase):
             data_loader = torch.utils.data.dataloader.DataLoader(
                 dataset=dataset,
                 batch_size=self.config.batch_size,
-                collate_fn=data.SecureRAGUsingT5EncodingCollator(
+                collate_fn=data.SecureRAG4T5Collator(
                     tokenizer=self.tokenizer,
                     text_maxlength=self.config.text_maxlength,
                     answer_maxlength=self.config.answer_maxlength,
@@ -437,26 +437,36 @@ class TestSecureRAG(TestModelBase):
         @iprofiler("prepare_data")
         def prepare_data():
             path = "data/open_domain_data/NQ/debug.json"
-            datas = data.load(path=path, cfg=self.config)
-            dataset = data.Dataset(data=datas, n_context=self.config.n_context)
+            datas = data.load(path=path, size=self.config.load_size)
+            self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
             self.tokenizer = transformers.T5Tokenizer.from_pretrained(
                 "t5-base", return_dict=False
             )
-            data_loader = torch.utils.data.dataloader.DataLoader(
-                dataset=dataset,
+            self.dataloader = torch.utils.data.dataloader.DataLoader(
+                dataset=self.dataset,
                 batch_size=self.config.batch_size,
-                collate_fn=data.SecureRAGUsingT5EncodingCollator(
+                collate_fn=data.SecureRAG4T5Collator(
                     tokenizer=self.tokenizer,
                     text_maxlength=self.config.text_maxlength,
                     answer_maxlength=self.config.answer_maxlength,
                     private_passage_ratio=self.config.private_passage_ratio,
                 ),
             )
-            self.record1 = next(iter(data_loader))
-
+            self.record1 = next(iter(self.dataloader))
         prepare_data()
+
         super().setUp()
 
+    def test_eval(self):
+        securerag.eval.evaluate(
+            model=self.model,
+            dataset=self.dataset,
+            dataloader=self.dataloader,
+            tokenizer=self.tokenizer,
+            cfg=self.config
+        )
+
+        
     def test_generate(self):
         # generate
         device = self.config.device

@@ -38,30 +38,10 @@ def evaluate(model, dataset, dataloader, tokenizer, cfg):
     print_freq = 100 if cfg.eval_print_freq is not None else cfg.eval_print_freq
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
-            # TODO: dispatcher
             device = cfg.device
-            (
-                idx,
-                question_ids,
-                question_masks,
-                context_ids,
-                context_masks,
-                scores,
-            ) = (
-                batch.index,
-                batch.question_ids,
-                batch.question_masks,
-                batch.passage_ids,
-                batch.passage_masks,
-                batch.scores,
-            )
-            if isinstance(model, FiDT5):
-                outputs = model.generate(
-                    input_ids=context_ids.cuda(),
-                    attention_mask=context_masks.cuda(),
-                    max_length=50,
-                )
-            elif isinstance(model, RagSequenceForGeneration):
+            idx = batch.index
+
+            if isinstance(model, RagSequenceForGeneration):
                 question_ids = question_ids.to(device).squeeze(1)
                 question_masks = question_masks.to(device).squeeze(1)
                 context_ids = context_ids.to(device).view(-1, context_ids.size(-1))
@@ -77,6 +57,9 @@ def evaluate(model, dataset, dataloader, tokenizer, cfg):
                     doc_scores=scores,
                     max_length=50,
                 )
+            else:
+                outputs = model.eval_generate(batch)
+
             for k, o in enumerate(outputs):
                 ans = tokenizer.decode(o, skip_special_tokens=True)
                 example = dataset.data[idx[k]]
