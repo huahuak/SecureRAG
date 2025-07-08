@@ -51,7 +51,6 @@ class FiDT5(transformers.T5ForConditionalGeneration):
         )
     
     def eval_generate(self,  batch: BatchData):
-        device = self.cfg.device
         (
             idx,
             question_ids,

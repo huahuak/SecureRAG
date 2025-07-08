@@ -44,6 +44,12 @@ class TestModelBase(TestConfigLoggerBase):
         cls.config.device = "cuda"
         cls.config.n_context = 10
         cls.config.batch_size = 10
+        cls.config.load_size = 1e2
+        cls.config.private_passage_ratio = 0.8
+
+        path = "data/open_domain_data/NQ/dev_with_scores.json"
+        datas = data.load(path=path, size=cls.config.load_size)
+        cls.dataset = data.Dataset(data=datas, n_context=cls.config.n_context)
 
     def setUp(self):
         super().setUp()
@@ -88,17 +94,14 @@ class TestFIDT5(TestModelBase):
         model_cls = securerag.models.FiDT5
         model_path = self.config.generator_model_path
         self.model: securerag.models.FiDT5 = model_cls.from_pretrained(model_path)
-        self.model = self.model.to(self.config.devicgg)
+        self.model = self.model.to(self.config.device)
         self.model.eval()
         # prepare data
-        path = "data/open_domain_data/NQ/dev.json"
-        datas = data.load(path=path, size=self.config.load_size)
-        dataset = data.Dataset(data=datas, n_context=self.config.n_context)
         self.tokenizer: transformers.T5Tokenizer = (
             transformers.T5Tokenizer.from_pretrained("models/t5-base", return_dict=False)
         )
-        data_loader = torch.utils.data.dataloader.DataLoader(
-            dataset=dataset,
+        self.data_loader = torch.utils.data.dataloader.DataLoader(
+            dataset=self.dataset,
             batch_size=self.config.batch_size,
             collate_fn=data.FiDT5Collator(
                 tokenizer=self.tokenizer,
@@ -106,7 +109,7 @@ class TestFIDT5(TestModelBase):
                 answer_maxlength=self.config.answer_maxlength,
             ),
         )
-        self.record1 = next(iter(data_loader))
+        self.record1 = next(iter(self.data_loader))
         super().setUp()
 
     @unittest.skipIf(NONDEBUG, "including within others")
@@ -153,35 +156,13 @@ class TestFIDT5(TestModelBase):
             print(ans)
             print(f"elapsed time : {time.time() - start: .3f} sec")
 
-    @unittest.skipIf(NONDEBUG, "including within others")
+    # @unittest.skipIf(NONDEBUG, "including within others")
     def test_eval(self):
-        # prepare model
-        model_cls = securerag.models.FiDT5
-        model_path = self.config.generator_model_path
-        model = model_cls.from_pretrained(model_path)
-        model = model.to(self.config.device)
-        # prepare dataset
-        path = "data/open_domain_data/NQ/dev.json"
-        datas = data.load(path)
-        dataset = data.Dataset(data=datas, n_context=self.config.n_context)
-        tokenizer: transformers.T5Tokenizer = transformers.T5Tokenizer.from_pretrained(
-            "t5-base", return_dict=False
-        )
-        data_loader = torch.utils.data.dataloader.DataLoader(
-            dataset=dataset,
-            batch_size=self.config.batch_size,
-            collate_fn=data.FiDT5Collator(
-                tokenizer=tokenizer,
-                text_maxlength=self.config.text_maxlength,
-                answer_maxlength=self.config.answer_maxlength,
-            ),
-        )
-        # eval
         securerag.eval.evaluate(
-            model=model,
-            dataset=dataset,
-            dataloader=data_loader,
-            tokenizer=tokenizer,
+            model=self.model,
+            dataset=self.dataset,
+            dataloader=self.data_loader,
+            tokenizer=self.tokenizer,
             cfg=self.config,
         )
 
@@ -436,9 +417,6 @@ class TestSecureRAG(TestModelBase):
 
         @iprofiler("prepare_data")
         def prepare_data():
-            path = "data/open_domain_data/NQ/debug.json"
-            datas = data.load(path=path, size=self.config.load_size)
-            self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
             self.tokenizer = transformers.T5Tokenizer.from_pretrained(
                 "t5-base", return_dict=False
             )
