@@ -1,8 +1,10 @@
 import logging
 import sys
+from typing import List
 
 
 logger = logging.getLogger(__name__)
+
 
 def init_logger(filename=None):
     handlers = [logging.StreamHandler(sys.stdout)]
@@ -16,10 +18,11 @@ def init_logger(filename=None):
     )
     return logger
 
+
 def redirectPrintToLogger():
     class PrintToLogger:
         def __init__(self, logger, level=logging.INFO):
-            self.logger : logging.Logger= logger
+            self.logger: logging.Logger = logger
             self.level = level
             self._buffer = ""
 
@@ -30,6 +33,21 @@ def redirectPrintToLogger():
 
         def flush(self):
             pass  # logging 本身不需要 flush，这里留空
-    
+
     sys.stdout = PrintToLogger(logger)
 
+
+metric_map = {}
+
+
+def add_metric(name, value):
+    metric_map.setdefault(name, []).append(value)
+    return value
+
+
+def get_metric(name) -> List[int]:
+    return metric_map[name]
+
+
+def clear_metric(name) -> List[int]:
+    return metric_map.pop(name)

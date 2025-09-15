@@ -37,7 +37,7 @@ class FiDT5(transformers.T5ForConditionalGeneration):
     # because the T5 forward method uses the input tensors to infer
     # dimensions used in the decoder.
     # EncoderWrapper resizes the inputs as (B * N) x L.
-    @profiler("FiDT5.forward")
+    # @profiler("FiDT5.forward")
     def forward(self, input_ids=None, attention_mask=None, **kwargs):
         if input_ids != None:
             # inputs might have already be resized in the generate method
@@ -49,8 +49,8 @@ class FiDT5(transformers.T5ForConditionalGeneration):
         return super().forward(
             input_ids=input_ids, attention_mask=attention_mask, **kwargs
         )
-    
-    def eval_generate(self,  batch: BatchData):
+
+    def eval_generate(self, batch: BatchData):
         (
             idx,
             question_ids,
@@ -67,15 +67,17 @@ class FiDT5(transformers.T5ForConditionalGeneration):
             batch.scores,
         )
         outputs = self.generate(
-            input_ids=context_ids.cuda(),
-            attention_mask=context_masks.cuda(),
+            input_ids=context_ids.to(self.device),
+            attention_mask=context_masks.to(self.device),
             max_length=50,
         )
         return outputs
 
     # We need to reskze the inputs here, as the generate method expect 2D tensors
     @profiler("FiDT5.generate")
-    def generate(self, input_ids, attention_mask, max_length, return_scores=False, **kwargs):
+    def generate(
+        self, input_ids, attention_mask, max_length, return_scores=False, **kwargs
+    ):
         self.tmp_scores = []
         # input_ids: (bsz, n_passages, passage_dim)
         self.encoder.n_passages = input_ids.size(1)

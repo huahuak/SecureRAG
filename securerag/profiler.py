@@ -7,11 +7,12 @@ def profiler(name):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            start = time.time()
             with record_function(name):
-                return func(*args, **kwargs)
-            end = time.time()
-            print(f"{name} elapsed: {end - start:.4f} seconds")
+                start = time.time()
+                result = func(*args, **kwargs)
+                end = time.time()
+                print(f"{name} elapsed: {end - start:.4f} seconds")
+            return result
         return wrapper
 
     return decorator

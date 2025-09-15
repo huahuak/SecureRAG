@@ -1,9 +1,13 @@
+from collections import Counter
 from pathlib import Path
 import string
 from venv import logger
 import numpy as np
 import regex
 import torch
+
+from securerag.data import profiler
+from securerag.utils import add_metric
 from .models import FiDT5
 from transformers import RagSequenceForGeneration
 
@@ -25,23 +29,54 @@ def normalize(s):
     return white_space_fix(remove_articles(remove_punc(lower(s))))
 
 
+def get_f1_score(answer, targets):
+    def f1_score(answer, target):
+        prediction_tokens = normalize(answer).split()
+        ground_truth_tokens = normalize(target).split()
+        common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
+        num_same = sum(common.values())
+        if num_same == 0:
+            return 0
+        precision = 1.0 * num_same / len(prediction_tokens)
+        recall = 1.0 * num_same / len(ground_truth_tokens)
+        f1 = (2 * precision * recall) / (precision + recall)
+        return f1
+
+    return max([f1_score(answer, target) for target in targets])
+
+
 def get_exact_match_score(answer, targets):
     normalize_answer = normalize(answer)
     return max([normalize_answer == normalize(it) for it in targets])
 
 
+@profiler("eval.evaluate")
 def evaluate(model, dataset, dataloader, tokenizer, cfg):
     loss, curr_loss = 0.0, 0.0
     model.eval()
     total = 0
     exactmatch = []
-    print_freq = 100 if cfg.eval_print_freq is not None else cfg.eval_print_freq
+    f1s = []
+    print_freq = 10 if cfg.eval_print_freq is not None else cfg.eval_print_freq
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
             device = cfg.device
             idx = batch.index
 
             if isinstance(model, RagSequenceForGeneration):
+                (
+                    question_ids,  # bsz * 1 * dim
+                    question_masks,
+                    context_ids,
+                    context_masks,  # bsz * docs * dim
+                    scores,  # bsz * docs
+                ) = (
+                    batch.question_ids,
+                    batch.question_masks,
+                    batch.passage_ids,
+                    batch.passage_masks,
+                    batch.scores,
+                )
                 question_ids = question_ids.to(device).squeeze(1)
                 question_masks = question_masks.to(device).squeeze(1)
                 context_ids = context_ids.to(device).view(-1, context_ids.size(-1))
@@ -65,7 +100,9 @@ def evaluate(model, dataset, dataloader, tokenizer, cfg):
                 example = dataset.data[idx[k]]
                 if "answers" in example:
                     score = get_exact_match_score(ans, example["answers"])
+                    f1 = get_f1_score(ans, example["answers"])
                     exactmatch.append(score)
+                    f1s.append(f1)
                 total += 1
 
             if (i + 1) % print_freq == 0:
@@ -74,7 +111,14 @@ def evaluate(model, dataset, dataloader, tokenizer, cfg):
                     log += "| no answer to compute scores"
                 else:
                     log += f" | average = {np.mean(exactmatch):.3f}"
+                    log += f" | f1 average = {np.mean(f1s):.3f}"
                 logger.warning(log)
 
     logger.warning(f"Process: total {total} | average = {np.mean(exactmatch):.3f}")
+    logger.warning(f"Process: total {total} | f1 average = {np.mean(f1s):.3f}")
+
+    # add metric
+    add_metric("ex", np.mean(exactmatch))
+    add_metric("f1", np.mean(f1s))
+
     return score, total

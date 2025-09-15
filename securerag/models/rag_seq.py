@@ -6,6 +6,7 @@ from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_utils import PreTrainedModel
 from transformers.configuration_rag import RagConfig
 from securerag.config import Config
+from securerag.data import BatchData
 from securerag.profiler import profiler
 
 
@@ -15,7 +16,7 @@ class RAGSequence(transformers.RagSequenceForGeneration):
         config: Optional[PretrainedConfig] = None,
         question_encoder: Optional[PreTrainedModel] = None,
         generator: Optional[PreTrainedModel] = None,
-        retriever: Optional = None, # type: ignore
+        retriever: Optional = None,  # type: ignore
         **kwargs,
     ):
         super().__init__(
@@ -151,7 +152,9 @@ class RAGSequence(transformers.RagSequenceForGeneration):
                 # add hypothesis
                 hypos.append(output_sequences[top_cand_inds])
 
-            return self._cat_and_pad(hypos, pad_token_id=self.config.generator.pad_token_id)
+            return self._cat_and_pad(
+                hypos, pad_token_id=self.config.generator.pad_token_id
+            )
 
         def batch_generate():
             @profiler("RAGSequence.candidate_generate")
@@ -163,13 +166,50 @@ class RAGSequence(transformers.RagSequenceForGeneration):
                 return candidates
 
             output_sequences = candidate_generate()
-            
+
             bsz = len(input_ids)
             n_docs = self.config.n_docs
             # TODO idx need produced by margin
-            idx = torch.arange(0, bsz * n_docs * num_beams, n_docs, dtype=torch.int, device=output_sequences.device)
+            idx = torch.arange(
+                0,
+                bsz * n_docs * num_beams,
+                n_docs,
+                dtype=torch.int,
+                device=output_sequences.device,
+            )
             output_sequences = output_sequences[idx]
             return output_sequences
 
         # return batch_generate()
         return generate()
+
+    def eval_generate(self, batch: BatchData):
+        # default PAML RAG-S run in TEE, CPU mode.
+        device = "cpu"
+        (
+            question_ids,
+            question_masks,
+            context_ids,
+            context_masks,
+            scores,
+        ) = (
+            batch.question_ids,
+            batch.question_masks,
+            batch.passage_ids,
+            batch.passage_masks,
+            batch.scores,
+        )
+        question_ids = question_ids.to(device).squeeze(1)
+        question_masks = question_masks.to(device).squeeze(1)
+        context_ids = context_ids.to(device).view(-1, context_ids.size(-1))
+        context_masks = context_masks.to(device).view(-1, context_masks.size(-1))
+        scores = scores.to(device).view(-1, scores.size(-1))
+        output = self.generate(
+            input_ids=question_ids,
+            attention_mask=question_masks,
+            context_input_ids=context_ids,
+            context_masks=context_masks,
+            doc_scores=scores,
+            max_length=50,
+        )
+        return output

@@ -1,5 +1,6 @@
 import cProfile
 import pstats
+import random
 import time
 import unittest
 
@@ -26,6 +27,7 @@ from torch.profiler import (
 )
 from securerag.profiler import profiler as iprofiler
 
+from securerag.utils import get_metric
 from test.test_base import TestConfigLoggerBase
 
 
@@ -40,12 +42,13 @@ logger = None
 class TestModelBase(TestConfigLoggerBase):
     @classmethod
     def setUpClass(cls):
+        random.seed(42)  # fixed shuffle
         super().setUpClass()
-        cls.config.device = "cuda"
+        cls.config.device = "cpu"
         cls.config.n_context = 10
         cls.config.batch_size = 10
-        cls.config.load_size = 1e2
-        cls.config.private_passage_ratio = 0.8
+        cls.config.load_size = 100
+        cls.config.private_passage_ratio = 0.9
 
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         datas = data.load(path=path, size=cls.config.load_size)
@@ -69,6 +72,9 @@ class TestModelBase(TestConfigLoggerBase):
                 self.pr.enable()
 
     def tearDown(self):
+        # show metric
+        print(get_metric("ex"))
+        print(get_metric("f1"))
         if ENABLE_PROFILER:
             # torch profiler
             self.profiler.stop()
@@ -98,7 +104,9 @@ class TestFIDT5(TestModelBase):
         self.model.eval()
         # prepare data
         self.tokenizer: transformers.T5Tokenizer = (
-            transformers.T5Tokenizer.from_pretrained("models/t5-base", return_dict=False)
+            transformers.T5Tokenizer.from_pretrained(
+                "models/t5-base", return_dict=False
+            )
         )
         self.data_loader = torch.utils.data.dataloader.DataLoader(
             dataset=self.dataset,
@@ -111,6 +119,9 @@ class TestFIDT5(TestModelBase):
         )
         self.record1 = next(iter(self.data_loader))
         super().setUp()
+
+    def model_info(self):
+        print()
 
     @unittest.skipIf(NONDEBUG, "including within others")
     def test_config(self):
@@ -166,6 +177,7 @@ class TestFIDT5(TestModelBase):
             cfg=self.config,
         )
 
+    @unittest.skipIf(NONDEBUG, "including within others")
     def test_outsourcing_model(self):
         assert self.config.device == "cpu", "make sure that device is cpu!"
         self.model = OutsourcingSecureModel(self.model)
@@ -188,14 +200,11 @@ class TestRAGSequence(TestModelBase):
             self.model.eval()
         # prepare data
         with record_function("prepare_data"):
-            path = "data/open_domain_data/NQ/debug.json"
-            datas = data.load(path=path, size=self.config.load_size)
-            dataset = data.Dataset(data=datas, n_context=self.config.n_context)
             self.tokenizer = transformers.RagTokenizer.from_pretrained(
                 checkpoint_path, return_dict=False
             ).generator
-            data_loader = torch.utils.data.dataloader.DataLoader(
-                dataset=dataset,
+            self.data_loader = torch.utils.data.dataloader.DataLoader(
+                dataset=self.dataset,
                 batch_size=self.config.batch_size,
                 collate_fn=data.RAGSequenceCollator(
                     tokenizer=self.tokenizer,
@@ -203,8 +212,17 @@ class TestRAGSequence(TestModelBase):
                     answer_maxlength=self.config.answer_maxlength,
                 ),
             )
-            self.record1 = next(iter(data_loader))
+            self.record1 = next(iter(self.data_loader))
         return super().setUp()
+
+    def test_eval(self):
+        securerag.eval.evaluate(
+            model=self.model,
+            dataset=self.dataset,
+            dataloader=self.data_loader,
+            tokenizer=self.tokenizer,
+            cfg=self.config,
+        )
 
     def test_generate(self):
         device = self.config.device
@@ -255,18 +273,18 @@ class TestRAGSequenceT5(TestModelBase):
             self.model: RAGSequence = model_cls.from_pretrained(
                 checkpoint_path, n_docs=self.config.n_context
             ).to(self.config.device)
-            self.model.wrap_encoder_with_profile()
+            self.model.rag.generator = generator
+            # self.model.wrap_encoder_with_profile()
             self.model.eval()
         # prepare data
         with record_function("prepare_data"):
             path = "data/open_domain_data/NQ/debug.json"
             datas = data.load(path=path, size=self.config.load_size)
-            dataset = data.Dataset(data=datas, n_context=self.config.n_context)
             self.tokenizer = transformers.T5Tokenizer.from_pretrained(
                 "t5-base", return_dict=False
             )
-            data_loader = torch.utils.data.dataloader.DataLoader(
-                dataset=dataset,
+            self.data_loader = torch.utils.data.dataloader.DataLoader(
+                dataset=self.dataset,
                 batch_size=self.config.batch_size,
                 collate_fn=data.FiDT5Collator(
                     tokenizer=self.tokenizer,
@@ -274,8 +292,17 @@ class TestRAGSequenceT5(TestModelBase):
                     answer_maxlength=self.config.answer_maxlength,
                 ),
             )
-            self.record1 = next(iter(data_loader))
-        return super().setUp()
+            self.record1 = next(iter(self.data_loader))
+        super().setUp()
+
+    def test_eval(self):
+        securerag.eval.evaluate(
+            model=self.model,
+            dataset=self.dataset,
+            dataloader=self.data_loader,
+            tokenizer=self.tokenizer,
+            cfg=self.config,
+        )
 
     def test_generate(self):
         device = self.config.device
@@ -318,6 +345,22 @@ class TestRAGSequenceT5(TestModelBase):
         self.test_generate()
 
 
+class TestRAGSequenceT5WithOutsource(TestRAGSequenceT5):
+    def setUp(self):
+        super().setUp()
+        self.model = OutsourcingSecureModel(self.model)
+
+    def test_eval(self):
+        securerag.eval.evaluate(
+            model=self.model,
+            dataset=self.dataset,
+            dataloader=self.data_loader,
+            tokenizer=self.tokenizer,
+            cfg=self.config,
+        )
+
+
+
 class TestPAMLRAGSequenceT5(TestModelBase):
     def setUp(self):
         # preparemodel
@@ -332,17 +375,15 @@ class TestPAMLRAGSequenceT5(TestModelBase):
             ).to(self.config.device)
             self.model.rag.generator = generator.to(self.config.device)
             self.model.eval()
-            self.model: PAMLRAGSequence = PAMLRAGSequence(self.model)
+            self.model = OutsourcingSecureModel(self.model)
+            # self.model: PAMLRAGSequence = PAMLRAGSequence(self.model)
         # prepare data
         with record_function("prepare_data"):
-            path = "data/open_domain_data/NQ/debug.json"
-            datas = data.load(path=path, size=self.config.load_size)
-            dataset = data.Dataset(data=datas, n_context=self.config.n_context)
             self.tokenizer = transformers.T5Tokenizer.from_pretrained(
                 "t5-base", return_dict=False
             )
-            data_loader = torch.utils.data.dataloader.DataLoader(
-                dataset=dataset,
+            self.data_loader = torch.utils.data.dataloader.DataLoader(
+                dataset=self.dataset,
                 batch_size=self.config.batch_size,
                 collate_fn=data.SecureRAG4T5Collator(
                     tokenizer=self.tokenizer,
@@ -351,8 +392,17 @@ class TestPAMLRAGSequenceT5(TestModelBase):
                     private_passage_ratio=self.config.private_passage_ratio,
                 ),
             )
-            self.record1 = next(iter(data_loader))
+            self.record1 = next(iter(self.data_loader))
         super().setUp()
+
+    def test_eval(self):
+        securerag.eval.evaluate(
+            model=self.model,
+            dataset=self.dataset,
+            dataloader=self.data_loader,
+            tokenizer=self.tokenizer,
+            cfg=self.config,
+        )
 
     def test_generate(self):
         device = self.config.device
@@ -402,6 +452,21 @@ class TestPAMLRAGSequenceT5(TestModelBase):
             print(f"elapsed time : {time.time() - start: .3f} sec")
 
 
+class TestPAMLFiDT5(TestFIDT5):
+    def setUp(self):
+        super().setUp()
+        self.model = PAMLFiDT5(model=self.model)
+
+    def test_eval(self):
+        securerag.eval.evaluate(
+            model=self.model,
+            dataset=self.dataset,
+            dataloader=self.data_loader,
+            tokenizer=self.tokenizer,
+            cfg=self.config,
+        )
+
+
 class TestSecureRAG(TestModelBase):
     def setUp(self):
         # prepare model
@@ -414,6 +479,7 @@ class TestSecureRAG(TestModelBase):
         from securerag.models.securerag import SecureRAG
 
         self.model: SecureRAG = SecureRAG(fidt5=self.model)
+        self.model.set_eta(0.01)
 
         @iprofiler("prepare_data")
         def prepare_data():
@@ -430,7 +496,8 @@ class TestSecureRAG(TestModelBase):
                     private_passage_ratio=self.config.private_passage_ratio,
                 ),
             )
-            self.record1 = next(iter(self.dataloader))
+            self.batch = next(iter(self.dataloader))
+
         prepare_data()
 
         super().setUp()
@@ -441,53 +508,108 @@ class TestSecureRAG(TestModelBase):
             dataset=self.dataset,
             dataloader=self.dataloader,
             tokenizer=self.tokenizer,
-            cfg=self.config
+            cfg=self.config,
         )
+    
+    def test_eta_cmp_eval(self):
+        import numpy as np
+        for eta in np.arange(0.01, 0.11, 0.01):
+            self.model.set_eta(eta)
+            print(f"eta is {eta}.")
+            securerag.eval.evaluate(
+                model=self.model,
+                dataset=self.dataset,
+                dataloader=self.dataloader,
+                tokenizer=self.tokenizer,
+                cfg=self.config,
+            )
 
+    def test_pri_ratio_cmp_eval(self):
+        import numpy as np
+        for ratio in np.arange(0.1, 1, 0.2):
+            print(f"ratio is {ratio}.")
+            self.config.private_passage_ratio = ratio
+            self.dataloader = torch.utils.data.dataloader.DataLoader(
+                dataset=self.dataset,
+                batch_size=self.config.batch_size,
+                collate_fn=data.SecureRAG4T5Collator(
+                    tokenizer=self.tokenizer,
+                    text_maxlength=self.config.text_maxlength,
+                    answer_maxlength=self.config.answer_maxlength,
+                    private_passage_ratio=self.config.private_passage_ratio,
+                ),
+            )
+            securerag.eval.evaluate(
+                model=self.model,
+                dataset=self.dataset,
+                dataloader=self.dataloader,
+                tokenizer=self.tokenizer,
+                cfg=self.config,
+            )
         
+
     def test_generate(self):
         # generate
         device = self.config.device
         with record_function("generate"), torch.no_grad():
+            batch = self.batch
             (
-                question_ids, # bsz * 1 * dim
-                question_masks, 
+                question_ids,  # bsz * 1 * dim
+                question_masks,
                 context_ids,
-                context_masks, # bsz * docs * dim
+                context_masks,  # bsz * docs * dim
                 private_context_ids,
-                private_context_masks, # bsz * docs_p * dim
-                scores, # bsz * docs
+                private_context_masks,  # bsz * docs_p * dim
+                scores,  # bsz * docs
+                private_scores,
             ) = (
-                self.record1.question_ids,
-                self.record1.question_masks,
-                self.record1.passage_ids,
-                self.record1.passage_masks,
-                self.record1.private_passage_ids,
-                self.record1.private_passage_masks,
-                self.record1.scores,
+                batch.question_ids,
+                batch.question_masks,
+                batch.passage_ids,
+                batch.passage_masks,
+                batch.private_passage_ids,
+                batch.private_passage_masks,
+                batch.scores,
+                batch.private_scores,
             )
-            question_ids = question_ids.to(device).squeeze(1)
-            question_masks = question_masks.to(device).squeeze(1)
-            context_ids = context_ids.to(device).view(-1, context_ids.size(-1))
-            context_masks = context_masks.to(device).view(-1, context_masks.size(-1))
-            private_context_ids = private_context_ids.to(device).view(
-                -1, context_ids.size(-1)
-            )
-            private_context_masks = private_context_masks.to(device).view(
-                -1, context_masks.size(-1)
-            )
-            scores = scores.to(device).view(-1, scores.size(-1))
             start = time.time()
             output = self.model.generate(
                 context_ids=context_ids,
                 context_ids_private=private_context_ids,
                 attention_mask=context_masks,
                 attention_mask_private=private_context_masks,
-                # TODO the dim of scores need to split
-                doc_scores=scores[:5],
-                doc_scores_private=scores[5:],
+                doc_scores=scores,
+                doc_scores_private=private_scores,
                 max_length=50,
             )
+            # (
+            #     question_ids,  # bsz * 1 * dim
+            #     question_masks,
+            #     context_ids,
+            #     context_masks,  # bsz * docs * dim
+            #     private_context_ids,
+            #     private_context_masks,  # bsz * docs_p * dim
+            #     scores,  # bsz * docs
+            # ) = (
+            #     self.record1.question_ids,
+            #     self.record1.question_masks,
+            #     self.record1.passage_ids,
+            #     self.record1.passage_masks,
+            #     self.record1.private_passage_ids,
+            #     self.record1.private_passage_masks,
+            #     self.record1.scores,
+            # )
+            # question_ids = question_ids.to(device).squeeze(1)
+            # question_masks = question_masks.to(device).squeeze(1)
+            # context_ids = context_ids.to(device).view(-1, context_ids.size(-1))
+            # context_masks = context_masks.to(device).view(-1, context_masks.size(-1))
+            # private_context_ids = private_context_ids.to(device).view(
+            #     -1, context_ids.size(-1)
+            # )
+            # private_context_masks = private_context_masks.to(device).view(
+            #     -1, context_masks.size(-1)
+            # )
+            # scores = scores.to(device).view(-1, scores.size(-1))
             ans = self.tokenizer.batch_decode(output, skip_special_tokens=True)
             print(ans)
             print(f"elapsed time : {time.time() - start: .3f} sec")

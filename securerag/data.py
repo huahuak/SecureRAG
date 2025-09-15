@@ -1,3 +1,4 @@
+from audioop import reverse
 from dataclasses import dataclass
 import json
 import random
@@ -33,9 +34,11 @@ class Dataset(torch.utils.data.Dataset):
         self,
         data,
         n_context=None,
+        enable_shuffle=True,
     ):
         self.data = data
         self.n_context = n_context
+        self.enable_shuffle = enable_shuffle
         self.sort_data()
 
     def __len__(self):
@@ -56,6 +59,9 @@ class Dataset(torch.utils.data.Dataset):
 
         if "ctxs" in example and self.n_context is not None:
             contexts = example["ctxs"][: self.n_context]
+            if self.enable_shuffle:
+                # contexts.sort(key=lambda x: float(x["score"]), reverse=True)
+                random.shuffle(contexts)
             scores = [float(c["score"]) for c in contexts]
             scores = torch.tensor(scores)
         else:
