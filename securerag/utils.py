@@ -50,4 +50,4 @@ def get_metric(name) -> List[int]:
 
 
 def clear_metric(name) -> List[int]:
-    return metric_map.pop(name)
+    return metric_map.pop(name, [])

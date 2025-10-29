@@ -4,6 +4,9 @@ import random
 import time
 import unittest
 
+from datasets import metric
+from ray import get
+from torch.utils.data import DataLoader
 import torch.utils.data.dataloader
 from torch.profiler import record_function
 import transformers
@@ -27,7 +30,7 @@ from torch.profiler import (
 )
 from securerag.profiler import profiler as iprofiler
 
-from securerag.utils import get_metric
+from securerag.utils import add_metric, get_metric
 from test.test_base import TestConfigLoggerBase
 
 
@@ -176,6 +179,35 @@ class TestFIDT5(TestModelBase):
             tokenizer=self.tokenizer,
             cfg=self.config,
         )
+
+    def test_k_eval(self):
+        import numpy as np
+
+        for k in np.arange(5, 20, 5):
+            self.config.n_context = k
+            path = "data/open_domain_data/NQ/dev_with_scores.json"
+            datas = data.load(path=path, size=self.config.load_size)
+            self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
+            self.data_loader = torch.utils.data.dataloader.DataLoader(
+                dataset=self.dataset,
+                batch_size=self.config.batch_size,
+                collate_fn=data.FiDT5Collator(
+                    tokenizer=self.tokenizer,
+                    text_maxlength=self.config.text_maxlength,
+                    answer_maxlength=self.config.answer_maxlength,
+                ),
+            )
+            start = time.time()
+            securerag.eval.evaluate(
+                model=self.model,
+                dataset=self.dataset,
+                dataloader=self.data_loader,
+                tokenizer=self.tokenizer,
+                cfg=self.config,
+            )
+            use_time = time.time() - start
+            add_metric("time", use_time)
+            print(f"ex: {get_metric('ex')}, f1: {get_metric('f1')}, time: {get_metric('time')}")
 
     @unittest.skipIf(NONDEBUG, "including within others")
     def test_outsourcing_model(self):
@@ -360,7 +392,6 @@ class TestRAGSequenceT5WithOutsource(TestRAGSequenceT5):
         )
 
 
-
 class TestPAMLRAGSequenceT5(TestModelBase):
     def setUp(self):
         # preparemodel
@@ -452,6 +483,11 @@ class TestPAMLRAGSequenceT5(TestModelBase):
             print(f"elapsed time : {time.time() - start: .3f} sec")
 
 
+class TestLinearLayerOffloadingFiDT5(TestFIDT5):
+    def setUp(self):
+        super().setUp()
+        self.model = OutsourcingSecureModel(model=self.model)
+
 class TestPAMLFiDT5(TestFIDT5):
     def setUp(self):
         super().setUp()
@@ -481,24 +517,20 @@ class TestSecureRAG(TestModelBase):
         self.model: SecureRAG = SecureRAG(fidt5=self.model)
         self.model.set_eta(0.01)
 
-        @iprofiler("prepare_data")
-        def prepare_data():
-            self.tokenizer = transformers.T5Tokenizer.from_pretrained(
-                "t5-base", return_dict=False
-            )
-            self.dataloader = torch.utils.data.dataloader.DataLoader(
-                dataset=self.dataset,
-                batch_size=self.config.batch_size,
-                collate_fn=data.SecureRAG4T5Collator(
-                    tokenizer=self.tokenizer,
-                    text_maxlength=self.config.text_maxlength,
-                    answer_maxlength=self.config.answer_maxlength,
-                    private_passage_ratio=self.config.private_passage_ratio,
-                ),
-            )
-            self.batch = next(iter(self.dataloader))
-
-        prepare_data()
+        self.tokenizer = transformers.T5Tokenizer.from_pretrained(
+            "t5-base", return_dict=False
+        )
+        self.dataloader = DataLoader(
+            dataset=self.dataset,
+            batch_size=self.config.batch_size,
+            collate_fn=data.SecureRAG4T5Collator(
+                tokenizer=self.tokenizer,
+                text_maxlength=self.config.text_maxlength,
+                answer_maxlength=self.config.answer_maxlength,
+                private_passage_ratio=self.config.private_passage_ratio,
+            ),
+        )
+        self.batch = next(iter(self.dataloader))
 
         super().setUp()
 
@@ -510,9 +542,10 @@ class TestSecureRAG(TestModelBase):
             tokenizer=self.tokenizer,
             cfg=self.config,
         )
-    
+
     def test_eta_cmp_eval(self):
         import numpy as np
+
         for eta in np.arange(0.01, 0.11, 0.01):
             self.model.set_eta(eta)
             print(f"eta is {eta}.")
@@ -526,6 +559,7 @@ class TestSecureRAG(TestModelBase):
 
     def test_pri_ratio_cmp_eval(self):
         import numpy as np
+
         for ratio in np.arange(0.1, 1, 0.2):
             print(f"ratio is {ratio}.")
             self.config.private_passage_ratio = ratio
@@ -546,7 +580,44 @@ class TestSecureRAG(TestModelBase):
                 tokenizer=self.tokenizer,
                 cfg=self.config,
             )
-        
+
+    def test_pri_eta_comb_cmp_eval(self):
+        import numpy as np
+
+        for k in np.arange(5, 20, 5):
+            self.config.n_context = k
+            path = "data/open_domain_data/NQ/dev_with_scores.json"
+            datas = data.load(path=path, size=self.config.load_size)
+            self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
+            for eta in np.arange(0.01, 0.11, 0.02):
+                self.model.set_eta(eta)
+                for ratio in np.arange(0.1, 1, 0.2):
+                    self.config.private_passage_ratio = ratio
+                    print(f"k is {k}, eta is {eta}, d is {ratio}")
+                    self.dataloader = DataLoader(
+                        dataset=self.dataset,
+                        batch_size=self.config.batch_size,
+                        collate_fn=data.SecureRAG4T5Collator(
+                            tokenizer=self.tokenizer,
+                            text_maxlength=self.config.text_maxlength,
+                            answer_maxlength=self.config.answer_maxlength,
+                            private_passage_ratio=self.config.private_passage_ratio,
+                        ),
+                    )
+                    timestart = time.time()
+                    securerag.eval.evaluate(
+                        model=self.model,
+                        dataset=self.dataset,
+                        dataloader=self.dataloader,
+                        tokenizer=self.tokenizer,
+                        cfg=self.config,
+                    )
+                    timeused = time.time() - timestart
+                    add_metric("time", timeused)
+                    print(f"k is {k}, eta is {ratio}, d is {ratio}")
+                    print(
+                        f'ex: {get_metric("ex")}, f1: {get_metric("f1")}, time: {get_metric("time")}'
+                    )
 
     def test_generate(self):
         # generate

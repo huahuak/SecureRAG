@@ -285,7 +285,7 @@ class SecureRAG4T5Collator(object):
             if example["passages"] is None:
                 return example["question"]
             size = len(example["passages"])
-            private_size = int(size * self.private_ratio)
+            private_size = max(1, int(size * self.private_ratio))
             question_prefix = "question:"
             title_prefix = "title:"
             passage_prefix = "context:"

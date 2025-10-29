@@ -32,7 +32,7 @@ class SecureRAG(nn.Module):
 
     def __del__(self):
         pfs = torch.Tensor(clear_metric("pri_fusion_size"))
-        print(f"pri_fusion_size mean: {pfs.float().mean().item()}")
+        # print(f"pri_fusion_size mean: {pfs.float().mean().item()}")
 
     def set_eta(self, val: int):
         self.eta = val
@@ -68,7 +68,7 @@ class SecureRAG(nn.Module):
             context_ids_private = context_ids_private.to("cuda")
             attention_mask_private = attention_mask_private.to("cuda")
 
-        print(f"scores: {doc_scores_all}")
+        # print(f"scores: {doc_scores_all}")
 
         def adaptive_passage_selection():
             enable_eta = True
@@ -111,16 +111,16 @@ class SecureRAG(nn.Module):
                 tmp = doc_scores_all
                 pri_fusion_size = max(int((w_pri + w_hyb) * total_size), 1)
                 pri_fusion_scores, idx = torch.topk(tmp, dim=-1, k=pri_fusion_size)
-            print(
-                f"""
-                pri_fusion_size: {pri_fusion_size}
-                pri_fusion_scores: {pri_fusion_scores.sum(-1)}
-                eta_scores_all: {eta_scores_all}
-                eta_mask: {eta_mask}
-                idx: {idx}
-                """
-            )
-            print(f"tmp: {tmp.gather(dim=1, index=idx)}")
+            # print(
+            #     f"""
+            #     pri_fusion_size: {pri_fusion_size}
+            #     pri_fusion_scores: {pri_fusion_scores.sum(-1)}
+            #     eta_scores_all: {eta_scores_all}
+            #     eta_mask: {eta_mask}
+            #     idx: {idx}
+            #     """
+            # )
+            # print(f"tmp: {tmp.gather(dim=1, index=idx)}")
             add_metric("pri_fusion_size", pri_fusion_size)
 
             idx = idx.unsqueeze(-1).expand(-1, -1, context_ids_all.size(-1))
@@ -175,7 +175,7 @@ class SecureRAG(nn.Module):
             y2_p, y2_p_logits, private_scores.sum(dim=1)
         )
         prediction = (rank_prob_y1 > rank_prob_y2_p).unsqueeze(1)
-        print(f"prediction: {prediction}")
+        # print(f"prediction: {prediction}")
         max_len = max(y1.size(-1), y2_p.size(-1))
         pad_value = self.pad
         y1 = functional.pad(y1, (0, max_len - y1.size(-1), 0, 0), value=pad_value)

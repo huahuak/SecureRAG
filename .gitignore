@@ -16,3 +16,4 @@ lib/*
 
 __pycache__
 out.tar
+data-model.tar
