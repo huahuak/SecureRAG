@@ -49,6 +49,49 @@ def get_exact_match_score(answer, targets):
     normalize_answer = normalize(answer)
     return max([normalize_answer == normalize(it) for it in targets])
 
+@profiler("eval.test_evaluate")
+def test_evaluate(model, dataset, dataloader, tokenizer, cfg):
+    loss, curr_loss = 0.0, 0.0
+    model.eval()
+    total = 0
+    exactmatch = []
+    f1s = []
+    print_freq = 10 if cfg.eval_print_freq is not None else cfg.eval_print_freq
+    with torch.no_grad():
+        for i, batch in enumerate(dataloader):
+            device = cfg.device
+            idx = batch.index
+            outputs = model.eval_generate(batch)
+            for k, output in enumerate(outputs):
+                (y, y_pub, y_pri) = output
+                ans = tokenizer.decode(y, skip_special_tokens=True)
+                example = dataset.data[idx[k]]
+                if "answers" in example:
+                    score = get_exact_match_score(ans, example["answers"])
+                    f1 = get_f1_score(ans, example["answers"])
+                    exactmatch.append(score)
+                    f1s.append(f1)
+                total += 1
+
+            if (i + 1) % print_freq == 0:
+                log = f"Process: {i+1} / {len(dataloader)}"
+                if len(exactmatch) == 0:
+                    log += "| no answer to compute scores"
+                else:
+                    log += f" | average = {np.mean(exactmatch):.3f}"
+                    log += f" | f1 average = {np.mean(f1s):.3f}"
+                logger.warning(log)
+
+    logger.warning(f"(test)Process: total {total} | average = {np.mean(exactmatch):.3f}")
+    logger.warning(f"(test)Process: total {total} | f1 average = {np.mean(f1s):.3f}")
+
+    # add metric
+    # add_metric("ex4pri", )
+    add_metric("ex", np.mean(exactmatch))
+    add_metric("f1", np.mean(f1s))
+
+    return score, total
+    
 
 @profiler("eval.evaluate")
 def evaluate(model, dataset, dataloader, tokenizer, cfg):

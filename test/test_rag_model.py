@@ -3,6 +3,7 @@ import pstats
 import random
 import time
 import unittest
+import numpy as np
 
 from datasets import metric
 from ray import get
@@ -50,7 +51,7 @@ class TestModelBase(TestConfigLoggerBase):
         cls.config.device = "cpu"
         cls.config.n_context = 10
         cls.config.batch_size = 10
-        cls.config.load_size = 100
+        cls.config.load_size = 300
         cls.config.private_passage_ratio = 0.9
 
         path = "data/open_domain_data/NQ/dev_with_scores.json"
@@ -59,6 +60,12 @@ class TestModelBase(TestConfigLoggerBase):
 
     def setUp(self):
         super().setUp()
+
+        # for auto eval
+        self.k_values = np.arange(5, 20, 5)
+        self.eta_values = np.arange(0.3, 1.0, 0.3)
+        self.d_values = np.arange(0.1, 1, 0.2)
+
         if ENABLE_PROFILER:
             # torch profile
             self.profiler = profile(
@@ -78,6 +85,29 @@ class TestModelBase(TestConfigLoggerBase):
         # show metric
         print(get_metric("ex"))
         print(get_metric("f1"))
+        print(get_metric("time"))
+        # plot 
+        from securerag.plot import plotfig
+        plotfig(
+            self.k_values,
+            self.eta_values,
+            self.d_values,
+            get_metric("ex"),
+            get_metric("f1"),
+            get_metric("time"),
+        )
+        # calculate every run pri_fusion_size
+        pri_fusion_size_mean = []
+        pri_fusion_size = get_metric("pri_fusion_size")
+        batch_rounds = int(self.config.load_size / self.config.batch_size)
+        siz = [len(self.k_values), len(self.eta_values), len(self.d_values)]
+        for i in range(0, len(pri_fusion_size), batch_rounds):
+            pri_fusion_size_mean.append(np.array(pri_fusion_size[i:i+batch_rounds]).mean())
+        arr = np.array(pri_fusion_size_mean).reshape(siz)
+        print(f"private fusion size is {np.vectorize(lambda x: float(f'{x:.2g}'))(arr)}")
+
+
+
         if ENABLE_PROFILER:
             # torch profiler
             self.profiler.stop()
@@ -207,7 +237,9 @@ class TestFIDT5(TestModelBase):
             )
             use_time = time.time() - start
             add_metric("time", use_time)
-            print(f"ex: {get_metric('ex')}, f1: {get_metric('f1')}, time: {get_metric('time')}")
+            print(
+                f"ex: {get_metric('ex')}, f1: {get_metric('f1')}, time: {get_metric('time')}"
+            )
 
     @unittest.skipIf(NONDEBUG, "including within others")
     def test_outsourcing_model(self):
@@ -488,6 +520,7 @@ class TestLinearLayerOffloadingFiDT5(TestFIDT5):
         super().setUp()
         self.model = OutsourcingSecureModel(model=self.model)
 
+
 class TestPAMLFiDT5(TestFIDT5):
     def setUp(self):
         super().setUp()
@@ -532,7 +565,7 @@ class TestSecureRAG(TestModelBase):
         )
         self.batch = next(iter(self.dataloader))
 
-        super().setUp()
+        return super().setUp()
 
     def test_eval(self):
         securerag.eval.evaluate(
@@ -582,16 +615,14 @@ class TestSecureRAG(TestModelBase):
             )
 
     def test_pri_eta_comb_cmp_eval(self):
-        import numpy as np
-
-        for k in np.arange(5, 20, 5):
+        for k in self.k_values: # for range k
             self.config.n_context = k
             path = "data/open_domain_data/NQ/dev_with_scores.json"
             datas = data.load(path=path, size=self.config.load_size)
             self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
-            for eta in np.arange(0.01, 0.11, 0.02):
+            for eta in self.eta_values: # for range eta
                 self.model.set_eta(eta)
-                for ratio in np.arange(0.1, 1, 0.2):
+                for ratio in self.d_values: # for range d
                     self.config.private_passage_ratio = ratio
                     print(f"k is {k}, eta is {eta}, d is {ratio}")
                     self.dataloader = DataLoader(

@@ -46,7 +46,7 @@ def add_metric(name, value):
 
 
 def get_metric(name) -> List[int]:
-    return metric_map[name]
+    return metric_map.get(name, [])
 
 
 def clear_metric(name) -> List[int]:

@@ -13,7 +13,7 @@ from securerag.profiler import profiler
 from securerag.models.utils import merge_tensor
 from securerag.utils import add_metric, clear_metric, get_metric
 
-ENABLE_DEV = False
+ENABLE_DEV = True
 
 
 class SecureRAG(nn.Module):
@@ -29,10 +29,6 @@ class SecureRAG(nn.Module):
         self.pad = fidt5.config.pad_token_id
         self.bos = fidt5.config.bos_token_id
         self.eta = 0.01
-
-    def __del__(self):
-        pfs = torch.Tensor(clear_metric("pri_fusion_size"))
-        # print(f"pri_fusion_size mean: {pfs.float().mean().item()}")
 
     def set_eta(self, val: int):
         self.eta = val
@@ -70,26 +66,31 @@ class SecureRAG(nn.Module):
 
         # print(f"scores: {doc_scores_all}")
 
+        # NOTE mark
         def adaptive_passage_selection():
-            enable_eta = True
+            enable_algorithm = True
             c_size = context_ids.size(1)
             cp_size = context_ids_private.size(1)
-            total_size = c_size + cp_size
-            k = c_size + cp_size
-            alpha = c_size / k
-            beta = cp_size / k
-            m = alpha * (1 - beta) + beta * (1 - alpha) + alpha * beta
-            w_pub = beta * (alpha - 1) * (1 / m)
-            w_pri = alpha * (beta - 1) * (1 / m)
-            w_hyb = alpha * beta * (1 / m)
-            # pub_fusion_size = max(int(w_hyb * total_size), 1)
-            if enable_eta:
+            k = total_size = c_size + cp_size
+            if enable_algorithm:
+                alpha = c_size / k
+                beta = cp_size / k
+                m = alpha * (1 - beta) + beta * (1 - alpha) + alpha * beta
+                w_pub = beta * (1 - alpha) * (1 / m)
+                w_pri = alpha * (1 - beta) * (1 / m)
+                w_hyb = alpha * beta * (1 / m)
+
                 eta_scores_all = doc_scores_all
                 eta_scores_all = eta_scores_all.mul(w_hyb)  # do copy here
                 # for private doc
-                eta_scores_all[:, doc_scores.size(1) :].mul_(1 + w_pri)
-                eta_mask = eta_scores_all > self.eta
-                eta_size = max(int(eta_mask.sum(-1).float().max().item()), 1)
+                eta_scores_all[:, doc_scores.size(1) :].add_(
+                    doc_scores_all[:, doc_scores.size(1) :].mul(w_pri)
+                )
+                # eta_scores_mean = eta_scores_all.mean(-1)
+                # eta_mask = eta_scores_all > (1 * eta_scores_mean).unsqueeze_(-1)
+                # eta_size = int(eta_mask.sum(-1).float().max().item())
+                eta_size = round(eta_scores_all.size(-1) * self.eta)
+                eta_size = max(eta_size, 1)
                 _, idx = eta_scores_all.topk(dim=-1, k=eta_size)
                 pri_fusion_scores = doc_scores_all.gather(dim=1, index=idx)
                 # for print
@@ -183,7 +184,7 @@ class SecureRAG(nn.Module):
         y = torch.where(prediction, y1, y2_p)
         # return y2_p
         if output_all_ans:
-            return (y1, y2_p)
+            return (y, y1, y2_p)
         else:
             return y
 
