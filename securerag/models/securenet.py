@@ -8,7 +8,7 @@ from securerag.data import BatchData
 from securerag.eval import logger
 from securerag.models.rag_seq import RAGSequence
 from securerag.models.fid import FiDT5
-from securerag.profiler import profiler
+from securerag.profiler import Profiler
 
 
 # method 1: outsourcing mechanism
@@ -17,10 +17,12 @@ class LinearWrapper(torch.nn.Module):
         super().__init__()
         self.linear: torch.nn.Linear = linear.to("cuda")
 
+    @Profiler("LinearWrapper.forward")
     def forward(self, input):
-        # linear size
         input = input.to("cuda")
-        output = self.linear(input)
+        with Profiler("linear.gpu"):
+            output = self.linear(input)
+            torch.cuda.synchronize()
         return output.to("cpu")
 
 
@@ -29,6 +31,11 @@ def outsourcing_linear_layers(module):
         if name == "lm_head":
             continue
         if isinstance(child, torch.nn.Linear):
+            total = 0
+            for param in child.parameters(False):
+                total += param.numel()
+            if total < 768 * 768:
+                continue
             linear_wrapper = LinearWrapper(child)
             setattr(module, name, linear_wrapper)
         else:
@@ -46,7 +53,7 @@ class OutsourcingSecureModel(torch.nn.Module):
 
     def generate(self, *args, **kwargs):
         return self.model.generate(*args, **kwargs)
-    
+
     def eval_generate(self, *args, **kwargs):
         return self.model.eval_generate(*args, **kwargs)
 
@@ -111,7 +118,7 @@ class PAMLRAGSequence(torch.nn.Module):
         return output
 
     @torch.no_grad()
-    @profiler("PAMLRAGSequence.generate")
+    @Profiler("PAMLRAGSequence.generate")
     def generate(
         self,
         input_ids=None,
@@ -166,7 +173,7 @@ class PAMLRAGSequence(torch.nn.Module):
                     index * n_private_passage : (index + 1) * n_private_passage
                 ]
 
-                @profiler("PAMLRAGSequence.candidate_generate")
+                @Profiler("PAMLRAGSequence.candidate_generate")
                 def candidate_generate(generator, generator_input_ids):
                     candidates = generator.generate(
                         generator_input_ids,
@@ -229,7 +236,7 @@ class PAMLRAGSequence(torch.nn.Module):
                 )  # (candidate_size, n_docs)
 
                 # calculate the margin loss
-                @profiler("PAMLRAGSequence.margin_forward")
+                @Profiler("PAMLRAGSequence.margin_forward")
                 def margin_forward():
                     outputs = self.model(
                         context_input_ids=rag_model_context_input_ids,
@@ -289,15 +296,19 @@ class PAMLFiDT5(torch.nn.Module):
         self.model.__class__ = FiDT5Wraper
         self.trusted_encoder = self.model.get_encoder()
         self.untrusted_encoder = copy.deepcopy(self.trusted_encoder).to("cuda")
-        self.model = OutsourcingSecureModel(self.model)
+        # self.model = OutsourcingSecureModel(self.model)
+        self.private_ratio = -1
 
-    @profiler("PAMLFiDT5.generate")
+    def set_private_ratio(self, ratio):
+        self.private_ratio = ratio
+
+    @Profiler("PAMLFiDT5.generate")
     def generate(
         self, input_ids, attention_mask, max_length, return_scores=False, **kwargs
     ):
         self.tmp_scores = []
         # input_ids: (bsz, n_passages, passage_dim)
-        self.trusted_encoder.n_passages = input_ids.size(1)
+        self.trusted_encoder.n_passages = int(input_ids.size(1) * self.private_ratio)
         self.untrusted_encoder.n_passages = input_ids.size(1)
         input_ids = input_ids.view(input_ids.size(0), -1)
         attention_mask = attention_mask.view(attention_mask.size(0), -1)
@@ -689,21 +700,22 @@ class FiDT5Wraper(FiDT5):
 
             def trusted_encoder():
                 encoder = self.get_encoder()
+                k = untrusted_encoder.n_passages
+                bsz, total_length = input_ids.shape
+                passage_length = total_length // k
+
                 i_input_ids = input_ids
                 i_attention_mask = attention_mask
-                bsz, total_length = i_input_ids.shape
-                passage_length = total_length // encoder.n_passages
-                i_input_ids = i_input_ids.view(bsz * encoder.n_passages, passage_length)
-                i_attention_mask = i_attention_mask.view(
-                    bsz * encoder.n_passages, passage_length
-                )
-                private_ratio = 0.5
-                i_input_ids = i_input_ids[: int(i_input_ids.size(0) * private_ratio)]
-                i_attention_mask = i_attention_mask[
-                    : int(i_attention_mask.size(0) * private_ratio)
-                ]
+                i_input_ids = i_input_ids.view(bsz, k, passage_length)[
+                    :, : encoder.n_passages, :
+                ].contiguous()
+                i_attention_mask = i_attention_mask.view(bsz, k, passage_length)[
+                    :, : encoder.n_passages, :
+                ].contiguous()
                 encoder_outputs = encoder(
-                    i_input_ids, attention_mask=i_attention_mask, return_dict=True
+                    i_input_ids.view(bsz, -1),
+                    attention_mask=i_attention_mask.view(bsz, -1),
+                    return_dict=True,
                 )
                 return encoder_outputs
 

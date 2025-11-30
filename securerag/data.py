@@ -5,7 +5,7 @@ import random
 from typing import Optional
 import torch
 
-from securerag.profiler import profiler
+from securerag.profiler import Profiler
 
 
 class PreProcess:
@@ -49,7 +49,8 @@ class Dataset(torch.utils.data.Dataset):
             target = example["target"]
             return target + " </s>"
         elif "answers" in example:
-            return random.choice(example["answers"]) + " </s>"
+            # return random.choice(example["answers"]) + " </s>"
+            return example["answers"][0] + " </s>"
         else:
             return None
 
@@ -124,7 +125,7 @@ class RAGSequenceCollator(object):
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
 
-    @profiler("RAGSequenceCollator")
+    @Profiler("RAGSequenceCollator")
     def __call__(self, batch):
         assert batch[0]["target"] != None
         index = torch.tensor([ex["index"] for ex in batch])
@@ -195,7 +196,7 @@ class FiDT5Collator(object):
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
 
-    @profiler("FiDT5Collator")
+    @Profiler("FiDT5Collator")
     def __call__(self, batch):
         assert batch[0]["target"] != None
         index = torch.tensor([ex["index"] for ex in batch])
@@ -261,7 +262,7 @@ class SecureRAG4T5Collator(object):
         self.answer_maxlength = answer_maxlength
         self.private_ratio = private_passage_ratio
 
-    @profiler("SecureRAGCollator")
+    @Profiler("SecureRAGCollator")
     def __call__(self, batch):
         assert batch[0]["target"] != None
         index = torch.tensor([ex["index"] for ex in batch])

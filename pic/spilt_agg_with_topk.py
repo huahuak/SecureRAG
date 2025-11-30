@@ -11,12 +11,6 @@ def plotfig(
     f1,
     time,
     ex_std=[1, 1, 1],
-    # f1_std=[0.5475714285714286, 0.5286666666666666, 0.542],  # k = 5, 10, 15
-    # time_std=[
-    #     45.480968713760376,
-    #     144.40443420410156,
-    #     253.6190755367279,
-    # ],  # k = 5, 10, 15
     f1_std=[0.5286666666666666, 0.542],  # k = 5, 10, 15
     time_std=[
         144.40443420410156,
@@ -27,8 +21,9 @@ def plotfig(
     ex_pub=[],
     ex_pri=[],
 ):
-    # parameter check
-
+    # ------------------------
+    # 参数设置
+    # ------------------------
     siz = [len(k_values), len(eta_values), len(d_values)]
     accuracy = np.array(f1).reshape(siz) / np.array(f1_std)[:, np.newaxis, np.newaxis]
     accuracy_pub = (
@@ -276,7 +271,7 @@ if __name__ == "__main__":
             0.3303809523809524,
             0.18690476190476185,
         ]
-    ).reshape(3, 3, 5)
+    ).reshape(3, 3, 5)[1:, :, :]
     f1_pri = np.array(
         [
             0.5149047619047619,
@@ -325,7 +320,7 @@ if __name__ == "__main__":
             0.542,
             0.542,
         ]
-    ).reshape(3, 3, 5)
+    ).reshape(3, 3, 5)[1:, :, :]
     efficiency = np.array(
         [
             27.033034086227417,
@@ -374,7 +369,7 @@ if __name__ == "__main__":
             234.8232901096344,
             241.0881745815277,
         ]
-    ).reshape(3, 3, 5)
+    ).reshape(3, 3, 5)[1:, :, :]
     plotfig(
         k_values,
         eta_values,

@@ -7,7 +7,7 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.configuration_rag import RagConfig
 from securerag.config import Config
 from securerag.data import BatchData
-from securerag.profiler import profiler
+from securerag.profiler import Profiler
 
 
 class RAGSequence(transformers.RagSequenceForGeneration):
@@ -32,7 +32,7 @@ class RAGSequence(transformers.RagSequenceForGeneration):
                 super().__init__()
                 self.encoder = encoder
 
-            @profiler("RAGSequence.Encoder")
+            @Profiler("RAGSequence.Encoder")
             def forward(
                 self,
                 input_ids,
@@ -52,7 +52,7 @@ class RAGSequence(transformers.RagSequenceForGeneration):
         self.generator.model.encoder = EncoderWithProfile(self.generator.model.encoder)
 
     @torch.no_grad()
-    @profiler("RAGSequence.generate")
+    @Profiler("RAGSequence.generate")
     def generate(
         self,
         input_ids=None,
@@ -97,7 +97,7 @@ class RAGSequence(transformers.RagSequenceForGeneration):
                     index * self.config.n_docs : (index + 1) * self.config.n_docs
                 ]  # (n_docs, max_len)
 
-                @profiler("RAGSequence.candidate_generate")
+                @Profiler("RAGSequence.candidate_generate")
                 def candidate_generate():
                     candidates = self.generator.generate(
                         generator_input_ids,
@@ -133,7 +133,7 @@ class RAGSequence(transformers.RagSequenceForGeneration):
                 )  # (candidate_size, n_docs)
 
                 # calculate the margin loss
-                @profiler("RAGSequence.margin_forward")
+                @Profiler("RAGSequence.margin_forward")
                 def margin_forward():
                     outputs = self(
                         # new_input_ids,
@@ -157,7 +157,7 @@ class RAGSequence(transformers.RagSequenceForGeneration):
             )
 
         def batch_generate():
-            @profiler("RAGSequence.candidate_generate")
+            @Profiler("RAGSequence.candidate_generate")
             def candidate_generate():
                 candidates = self.generator.generate(
                     context_input_ids,

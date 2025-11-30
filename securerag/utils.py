@@ -1,6 +1,8 @@
+import json
 import logging
 import sys
 from typing import List
+import numpy as np
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ def redirectPrintToLogger():
                 self.logger.log(self.level, f"{message}", stacklevel=2)
 
         def flush(self):
-            pass  # logging 本身不需要 flush，这里留空
+            pass
 
     sys.stdout = PrintToLogger(logger)
 
@@ -51,3 +53,12 @@ def get_metric(name) -> List[int]:
 
 def clear_metric(name) -> List[int]:
     return metric_map.pop(name, [])
+
+
+def show_metric():
+    def map_print(data):
+        formatted = json.dumps(data, indent=4, ensure_ascii=False, default=lambda o: float(o))
+        print("\n"+formatted)
+    map_print(metric_map)
+    map_print({k: [np.mean(v), np.min(v), np.max(v), np.sum(v)] for k, v in metric_map.items()})
+

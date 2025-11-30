@@ -6,7 +6,7 @@ import numpy as np
 import regex
 import torch
 
-from securerag.data import profiler
+from securerag.data import Profiler
 from securerag.utils import add_metric
 from .models import FiDT5
 from transformers import RagSequenceForGeneration
@@ -49,30 +49,42 @@ def get_exact_match_score(answer, targets):
     normalize_answer = normalize(answer)
     return max([normalize_answer == normalize(it) for it in targets])
 
-@profiler("eval.test_evaluate")
+@Profiler("eval.test_evaluate")
 def test_evaluate(model, dataset, dataloader, tokenizer, cfg):
     loss, curr_loss = 0.0, 0.0
     model.eval()
     total = 0
     exactmatch = []
+    exactmatch_pub = []
+    exactmatch_pri = []
     f1s = []
-    print_freq = 10 if cfg.eval_print_freq is not None else cfg.eval_print_freq
+    f1s_pub = []
+    f1s_pri = []
+    print_freq = 10 if cfg.eval_print_freq is None else cfg.eval_print_freq
+
+    def scores_handler(outputs, example, ex_list, f1_list):
+        for k, output in enumerate(outputs):
+            ans = tokenizer.decode(output, skip_special_tokens=True)
+            example = dataset.data[idx[k]]
+            ex, f1 = 0.0, 0.0
+            if "answers" in example:
+                ex = get_exact_match_score(ans, example["answers"])
+                f1 = get_f1_score(ans, example["answers"])
+            ex_list.append(ex)
+            f1_list.append(f1)
+            
+
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
             device = cfg.device
             idx = batch.index
-            outputs = model.eval_generate(batch)
-            for k, output in enumerate(outputs):
-                (y, y_pub, y_pri) = output
-                ans = tokenizer.decode(y, skip_special_tokens=True)
-                example = dataset.data[idx[k]]
-                if "answers" in example:
-                    score = get_exact_match_score(ans, example["answers"])
-                    f1 = get_f1_score(ans, example["answers"])
-                    exactmatch.append(score)
-                    f1s.append(f1)
-                total += 1
+            (y, y_pub, y_pri) = model.eval_generate(batch, output_all_ans=True)
+            scores_handler(y, dataset.data, exactmatch, f1s)
+            scores_handler(y_pub, dataset.data, exactmatch_pub, f1s_pub)
+            scores_handler(y_pri, dataset.data, exactmatch_pri, f1s_pri)
 
+            # log
+            total += 1
             if (i + 1) % print_freq == 0:
                 log = f"Process: {i+1} / {len(dataloader)}"
                 if len(exactmatch) == 0:
@@ -82,25 +94,26 @@ def test_evaluate(model, dataset, dataloader, tokenizer, cfg):
                     log += f" | f1 average = {np.mean(f1s):.3f}"
                 logger.warning(log)
 
-    logger.warning(f"(test)Process: total {total} | average = {np.mean(exactmatch):.3f}")
+    logger.warning(f"(test)Process: total {total} | ex average = {np.mean(exactmatch):.3f}")
     logger.warning(f"(test)Process: total {total} | f1 average = {np.mean(f1s):.3f}")
 
     # add metric
-    # add_metric("ex4pri", )
     add_metric("ex", np.mean(exactmatch))
+    add_metric("ex_pub", np.mean(exactmatch_pub))
+    add_metric("ex_pri", np.mean(exactmatch_pri))
     add_metric("f1", np.mean(f1s))
-
-    return score, total
+    add_metric("f1_pub", np.mean(f1s_pub))
+    add_metric("f1_pri", np.mean(f1s_pri))
     
 
-@profiler("eval.evaluate")
+@Profiler("eval.evaluate")
 def evaluate(model, dataset, dataloader, tokenizer, cfg):
     loss, curr_loss = 0.0, 0.0
     model.eval()
     total = 0
     exactmatch = []
     f1s = []
-    print_freq = 10 if cfg.eval_print_freq is not None else cfg.eval_print_freq
+    print_freq = 10 if cfg.eval_print_freq is None else cfg.eval_print_freq
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
             device = cfg.device
@@ -153,7 +166,7 @@ def evaluate(model, dataset, dataloader, tokenizer, cfg):
                 if len(exactmatch) == 0:
                     log += "| no answer to compute scores"
                 else:
-                    log += f" | average = {np.mean(exactmatch):.3f}"
+                    log += f" | ex average = {np.mean(exactmatch):.3f}"
                     log += f" | f1 average = {np.mean(f1s):.3f}"
                 logger.warning(log)
 

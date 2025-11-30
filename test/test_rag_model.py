@@ -1,4 +1,5 @@
 import cProfile
+import copy
 import pstats
 import random
 import time
@@ -22,6 +23,7 @@ from securerag.models import (
     OutsourcingSecureModel,
     PAMLFiDT5,
     PAMLRAGSequence,
+    SecureRAG,
 )
 from torch.profiler import (
     profile,
@@ -29,9 +31,9 @@ from torch.profiler import (
     schedule,
     tensorboard_trace_handler,
 )
-from securerag.profiler import profiler as iprofiler
+from securerag.profiler import Profiler as iprofiler
 
-from securerag.utils import add_metric, get_metric
+from securerag.utils import add_metric, get_metric, show_metric
 from test.test_base import TestConfigLoggerBase
 
 
@@ -47,12 +49,13 @@ class TestModelBase(TestConfigLoggerBase):
     @classmethod
     def setUpClass(cls):
         random.seed(42)  # fixed shuffle
+        torch.manual_seed(42)
         super().setUpClass()
-        cls.config.device = "cpu"
-        cls.config.n_context = 10
-        cls.config.batch_size = 10
-        cls.config.load_size = 300
-        cls.config.private_passage_ratio = 0.9
+        cls.config.device = "cuda"
+        cls.config.n_context = 10  # k
+        cls.config.batch_size = 16
+        cls.config.load_size = 1000
+        cls.config.private_passage_ratio = 0.5
 
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         datas = data.load(path=path, size=cls.config.load_size)
@@ -62,9 +65,9 @@ class TestModelBase(TestConfigLoggerBase):
         super().setUp()
 
         # for auto eval
-        self.k_values = np.arange(5, 20, 5)
-        self.eta_values = np.arange(0.3, 1.0, 0.3)
-        self.d_values = np.arange(0.1, 1, 0.2)
+        self.k_values = np.linspace(5, 15, 3, dtype=int)
+        self.eta_values = np.round(np.linspace(1.5, 2.5, 3), 1)
+        self.d_values = np.round(np.linspace(0.1, 0.9, 5), 1)
 
         if ENABLE_PROFILER:
             # torch profile
@@ -82,31 +85,34 @@ class TestModelBase(TestConfigLoggerBase):
                 self.pr.enable()
 
     def tearDown(self):
-        # show metric
-        print(get_metric("ex"))
-        print(get_metric("f1"))
-        print(get_metric("time"))
-        # plot 
-        from securerag.plot import plotfig
-        plotfig(
-            self.k_values,
-            self.eta_values,
-            self.d_values,
-            get_metric("ex"),
-            get_metric("f1"),
-            get_metric("time"),
-        )
-        # calculate every run pri_fusion_size
-        pri_fusion_size_mean = []
-        pri_fusion_size = get_metric("pri_fusion_size")
-        batch_rounds = int(self.config.load_size / self.config.batch_size)
-        siz = [len(self.k_values), len(self.eta_values), len(self.d_values)]
-        for i in range(0, len(pri_fusion_size), batch_rounds):
-            pri_fusion_size_mean.append(np.array(pri_fusion_size[i:i+batch_rounds]).mean())
-        arr = np.array(pri_fusion_size_mean).reshape(siz)
-        print(f"private fusion size is {np.vectorize(lambda x: float(f'{x:.2g}'))(arr)}")
+        show_metric()
 
-
+        # # plot
+        # from securerag.plot import plotfig
+        # plotfig(
+        #     self.k_values,
+        #     self.eta_values,
+        #     self.d_values,
+        #     ex=get_metric("ex"),
+        #     f1=get_metric("f1"),
+        #     # time=np.zeros_like(np.array(get_metric("time"))),  # for test, time is meaningless.
+        #     time=get_metric("time"),
+        #     f1_pub=get_metric("f1_pub"),
+        #     f1_pri=get_metric("f1_pri"),
+        # )
+        # # calculate every run pri_fusion_size
+        # pri_fusion_size_mean = []
+        # pri_fusion_size = get_metric("pri_fusion_size")
+        # batch_rounds = int(self.config.load_size / self.config.batch_size)
+        # siz = [len(self.k_values), len(self.eta_values), len(self.d_values)]
+        # for i in range(0, len(pri_fusion_size), batch_rounds):
+        #     pri_fusion_size_mean.append(
+        #         np.array(pri_fusion_size[i : i + batch_rounds]).mean()
+        #     )
+        # arr = np.array(pri_fusion_size_mean).reshape(siz)
+        # print(
+        #     f"private fusion size is {np.vectorize(lambda x: float(f'{x:.2g}'))(arr)}"
+        # )
 
         if ENABLE_PROFILER:
             # torch profiler
@@ -615,16 +621,15 @@ class TestSecureRAG(TestModelBase):
             )
 
     def test_pri_eta_comb_cmp_eval(self):
-        for k in self.k_values: # for range k
+        for k in self.k_values:  # for range k
             self.config.n_context = k
             path = "data/open_domain_data/NQ/dev_with_scores.json"
             datas = data.load(path=path, size=self.config.load_size)
             self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
-            for eta in self.eta_values: # for range eta
+            for eta in self.eta_values:  # for range eta
                 self.model.set_eta(eta)
-                for ratio in self.d_values: # for range d
+                for ratio in self.d_values:  # for range d
                     self.config.private_passage_ratio = ratio
-                    print(f"k is {k}, eta is {eta}, d is {ratio}")
                     self.dataloader = DataLoader(
                         dataset=self.dataset,
                         batch_size=self.config.batch_size,
@@ -636,7 +641,7 @@ class TestSecureRAG(TestModelBase):
                         ),
                     )
                     timestart = time.time()
-                    securerag.eval.evaluate(
+                    securerag.eval.test_evaluate(
                         model=self.model,
                         dataset=self.dataset,
                         dataloader=self.dataloader,
@@ -645,7 +650,7 @@ class TestSecureRAG(TestModelBase):
                     )
                     timeused = time.time() - timestart
                     add_metric("time", timeused)
-                    print(f"k is {k}, eta is {ratio}, d is {ratio}")
+                    print(f"k is {k}, eta is {eta}, d is {ratio}")
                     print(
                         f'ex: {get_metric("ex")}, f1: {get_metric("f1")}, time: {get_metric("time")}'
                     )
@@ -715,3 +720,157 @@ class TestSecureRAG(TestModelBase):
             ans = self.tokenizer.batch_decode(output, skip_special_tokens=True)
             print(ans)
             print(f"elapsed time : {time.time() - start: .3f} sec")
+
+
+class TestEfficiencyForFiD(TestFIDT5):
+    def setUp(self):
+        self.config.n_context = 10  # k
+        self.config.batch_size = 16
+        self.config.load_size = 100
+
+        super().setUp()
+
+        self.cpu_model = copy.deepcopy(self.model).to("cpu")
+        self.gpu_model = copy.deepcopy(self.model).to("cuda")
+        self.llo_model = OutsourcingSecureModel(copy.deepcopy(self.model))
+        self.mlo_model = PAMLFiDT5(copy.deepcopy(self.model))
+        self.sa_model = SecureRAG(copy.deepcopy(self.model), enable_algorithm=False)
+        self.sa_model.set_eta(2.5)
+        self.sa_pf_model = SecureRAG(copy.deepcopy(self.model), enable_algorithm=True)
+        self.sa_pf_model.set_eta(2.5)
+
+    def test_efficiency(self):
+        def do_eval(name, model, data_loader):
+            with data.Profiler(name, print_time=True):
+                securerag.eval.evaluate(
+                    model=model,
+                    dataset=self.dataset,
+                    dataloader=data_loader,
+                    tokenizer=self.tokenizer,
+                    cfg=self.config,
+                )
+            show_metric()
+
+        for d in self.d_values:
+            self.config.private_passage_ratio = d
+            dataloader = DataLoader(
+                dataset=self.dataset,
+                batch_size=self.config.batch_size,
+                collate_fn=data.SecureRAG4T5Collator(
+                    tokenizer=self.tokenizer,
+                    text_maxlength=self.config.text_maxlength,
+                    answer_maxlength=self.config.answer_maxlength,
+                    private_passage_ratio=self.config.private_passage_ratio,
+                ),
+            )
+            self.mlo_model.set_private_ratio(d)
+            do_eval("mlo_fidt5", self.mlo_model, self.data_loader)
+            do_eval("sa_fidt5", self.sa_model, dataloader)
+            do_eval("sa_pf_fidt5", self.sa_pf_model, dataloader)
+        do_eval("llo_fidt5", self.llo_model, self.data_loader)
+        do_eval("gpu_fidt5", self.gpu_model, self.data_loader)
+        do_eval("cpu_fidt5", self.cpu_model, self.data_loader)
+
+
+class TestAccuracyForFiD(TestFIDT5):
+    def setUp(self):
+        self.config.device = "cuda"
+        self.config.n_context = 10  # k
+        self.config.batch_size = 16
+        self.config.load_size = 1000
+
+        super().setUp()
+
+        self.original_model = self.model
+        self.mlo_model = PAMLFiDT5(copy.deepcopy(self.model))
+        self.mlo_model.set_private_ratio(0.5)
+        self.split_agg = SecureRAG(copy.deepcopy(self.model), enable_algorithm=False)
+        self.split_agg.set_eta(2.5)
+        self.split_agg_with_adpatpf = SecureRAG(
+            copy.deepcopy(self.model), enable_algorithm=True
+        )
+        self.split_agg_with_adpatpf.set_eta(2.5)
+
+    def test_accuracy(self):
+        # securerag.eval.evaluate(
+        #     model=self.original_model,
+        #     dataset=self.dataset,
+        #     dataloader=self.data_loader,
+        #     tokenizer=self.tokenizer,
+        #     cfg=self.config,
+        # )
+        #   show_metric()
+        # securerag.eval.evaluate(
+        #     model=self.mlo_model,
+        #     dataset=self.dataset,
+        #     dataloader=self.data_loader,
+        #     tokenizer=self.tokenizer,
+        #     cfg=self.config,
+        # )
+        show_metric()
+        # for model in [self.split_agg, self.split_agg_with_adpatpf]:
+        for model in [self.split_agg_with_adpatpf]:
+            for d in self.d_values:
+                self.config.private_passage_ratio = d
+                self.dataloader = DataLoader(
+                    dataset=self.dataset,
+                    batch_size=self.config.batch_size,
+                    collate_fn=data.SecureRAG4T5Collator(
+                        tokenizer=self.tokenizer,
+                        text_maxlength=self.config.text_maxlength,
+                        answer_maxlength=self.config.answer_maxlength,
+                        private_passage_ratio=self.config.private_passage_ratio,
+                    ),
+                )
+                securerag.eval.test_evaluate(
+                    model=model,
+                    dataset=self.dataset,
+                    dataloader=self.dataloader,
+                    tokenizer=self.tokenizer,
+                    cfg=self.config,
+                )
+                show_metric()
+
+class TestEtaForFiD(TestFIDT5):
+    def setUp(self):
+        self.config.n_context = 10  # k
+        self.config.batch_size = 16
+        self.config.load_size = 1000
+
+        super().setUp()
+
+        self.split_agg_with_adpatpf = SecureRAG(
+            copy.deepcopy(self.model), enable_algorithm=True
+        )
+
+    def test_eta(self):
+        def do_eval(name, model, data_loader):
+            with data.Profiler(name, print_time=True):
+                securerag.eval.test_evaluate(
+                    model=model,
+                    dataset=self.dataset,
+                    dataloader=data_loader,
+                    tokenizer=self.tokenizer,
+                    cfg=self.config,
+                )
+            show_metric()
+
+        for eta in self.eta_values:
+            self.split_agg_with_adpatpf.set_eta(eta)
+            for d in self.d_values:
+                self.config.private_passage_ratio = d
+                self.dataloader = DataLoader(
+                    dataset=self.dataset,
+                    batch_size=self.config.batch_size,
+                    collate_fn=data.SecureRAG4T5Collator(
+                        tokenizer=self.tokenizer,
+                        text_maxlength=self.config.text_maxlength,
+                        answer_maxlength=self.config.answer_maxlength,
+                        private_passage_ratio=self.config.private_passage_ratio,
+                    ),
+                )
+                do_eval(
+                    f"sa_pf_fidt5_eta_{eta}",
+                    self.split_agg_with_adpatpf,
+                    self.dataloader,
+                )

@@ -13,7 +13,7 @@ from torch.nn import CrossEntropyLoss
 import numpy as np
 
 from securerag.data import BatchData
-from securerag.profiler import profiler
+from securerag.profiler import Profiler
 
 
 class FiDT5(transformers.T5ForConditionalGeneration):
@@ -74,7 +74,7 @@ class FiDT5(transformers.T5ForConditionalGeneration):
         return outputs
 
     # We need to reskze the inputs here, as the generate method expect 2D tensors
-    @profiler("FiDT5.generate")
+    @Profiler("FiDT5.generate")
     def generate(
         self, input_ids, attention_mask, max_length, return_scores=False, **kwargs
     ):
@@ -179,7 +179,7 @@ class EncoderWrapper(torch.nn.Module):
         self.encoder = encoder
         apply_checkpoint_wrapper(self.encoder, use_checkpoint)
 
-    @profiler("FiDT5.Encoder")
+    @Profiler("FiDT5.Encoder")
     def forward(
         self,
         input_ids=None,

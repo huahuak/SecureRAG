@@ -9,7 +9,7 @@ from securerag.data import BatchData
 from securerag.models import OutsourcingSecureModel
 from securerag.models.rag_seq import RAGSequence
 from securerag.models.fid import FiDT5
-from securerag.profiler import profiler
+from securerag.profiler import Profiler
 from securerag.models.utils import merge_tensor
 from securerag.utils import add_metric, clear_metric, get_metric
 
@@ -17,18 +17,22 @@ ENABLE_DEV = True
 
 
 class SecureRAG(nn.Module):
-    def __init__(self, fidt5: FiDT5):
+    def __init__(self, fidt5: FiDT5, enable_algorithm = True, enable_topk = False):
         super().__init__()
         self.fidt5 = fidt5.to("cuda")
         if ENABLE_DEV:
             self.fidt5_p = deepcopy(fidt5).to("cuda")
         else:
             self.fidt5_p = deepcopy(fidt5).to("cpu")
-            self.fidt5_p = OutsourcingSecureModel(self.fidt5_p)
+            # self.fidt5_p = OutsourcingSecureModel(self.fidt5_p)
         # TODO need to confirm the pad token id
         self.pad = fidt5.config.pad_token_id
         self.bos = fidt5.config.bos_token_id
-        self.eta = 0.01
+        self.eta = 1
+        self.topk = 1
+        # algorithm parameter
+        self.enable_algorithm = enable_algorithm
+        self.enable_topk = enable_topk
 
     def set_eta(self, val: int):
         self.eta = val
@@ -68,50 +72,68 @@ class SecureRAG(nn.Module):
 
         # NOTE mark
         def adaptive_passage_selection():
-            enable_algorithm = True
+
+
             c_size = context_ids.size(1)
             cp_size = context_ids_private.size(1)
             k = total_size = c_size + cp_size
-            if enable_algorithm:
-                alpha = c_size / k
-                beta = cp_size / k
-                m = alpha * (1 - beta) + beta * (1 - alpha) + alpha * beta
-                w_pub = beta * (1 - alpha) * (1 / m)
-                w_pri = alpha * (1 - beta) * (1 / m)
-                w_hyb = alpha * beta * (1 / m)
 
-                eta_scores_all = doc_scores_all
-                eta_scores_all = eta_scores_all.mul(w_hyb)  # do copy here
-                # for private doc
-                eta_scores_all[:, doc_scores.size(1) :].add_(
-                    doc_scores_all[:, doc_scores.size(1) :].mul(w_pri)
-                )
-                # eta_scores_mean = eta_scores_all.mean(-1)
-                # eta_mask = eta_scores_all > (1 * eta_scores_mean).unsqueeze_(-1)
-                # eta_size = int(eta_mask.sum(-1).float().max().item())
-                eta_size = round(eta_scores_all.size(-1) * self.eta)
-                eta_size = max(eta_size, 1)
-                _, idx = eta_scores_all.topk(dim=-1, k=eta_size)
-                pri_fusion_scores = doc_scores_all.gather(dim=1, index=idx)
-                # for print
-                tmp = eta_scores_all
-                pri_fusion_size = eta_size
-                # old method:
-                # alpha_scores = private_scores.sum(-1).mean()
-                # beta_scores = public_scores.sum(-1).mean()
-                #     alpha_scores * tmp[:, : doc_scores.size(1)]
+            # algor 1
+            if self.enable_algorithm:
+                # alpha = c_size / k
+                # beta = cp_size / k
+                # m = alpha * (1 - beta) + beta * (1 - alpha) + alpha * beta
+                # w_pub = beta * (1 - alpha) * (1 / m)
+                # w_pri = alpha * (1 - beta) * (1 / m)
+                # w_hyb = alpha * beta * (1 / m)
+
+                # eta_scores_all = doc_scores_all
+                # eta_scores_all = eta_scores_all.mul(w_hyb)  # do copy here
+                # # for private doc
+                # eta_scores_all[:, doc_scores.size(1) :].add_(
+                #     doc_scores_all[:, doc_scores.size(1) :].mul(w_pri)
                 # )
-                # # public score process
-                # tmp[:, : doc_scores.size(1)].mul_(1 - beta_scores)
-                # tmp[:, : doc_scores.size(1)].clamp_min_(0.0)
-                # tmp_scores, idx = torch.sort(tmp, dim=-1, descending=True)
-                # pri_fusion_size = max((tmp_scores > eta).sum(-1).max(), int(1))
-                # idx = idx[:, :pri_fusion_size]
+                # eta_size = round(eta_scores_all.size(-1) * self.eta)
+                # eta_size = max(eta_size, 1)
+                # _, idx = eta_scores_all.topk(dim=-1, k=eta_size)
                 # pri_fusion_scores = doc_scores_all.gather(dim=1, index=idx)
+                # pri_fusion_size = eta_size
+
+                eta_size = int(total_size * self.topk)
+                eta_size = max(eta_size, 1)
+                top_eta_scores, top_eta_idx = doc_scores_all.topk(
+                    dim=-1, k=eta_size
+                )
+                aux_zeros = torch.zeros_like(top_eta_scores)
+                candidate_pub_scores = top_eta_scores.where(
+                    top_eta_idx < c_size, aux_zeros
+                )
+                presum_scores = top_eta_scores.cumsum(dim=1)
+                alpha = 1 / (self.eta * total_size)
+                presum_threshold = torch.full_like(presum_scores, alpha).cumsum(1)
+                condition = candidate_pub_scores.sum(-1).unsqueeze(1) < (
+                    presum_scores - presum_threshold
+                )
+                pri_fusion_size = (presum_scores - presum_threshold).where(condition, aux_zeros).argmax(dim=1).float().max().item()
+                pri_fusion_size = round(pri_fusion_size + 1) # plus 1 to get length
+                pri_fusion_size = max(pri_fusion_size, 1)
+                pri_fusion_scores, idx = doc_scores_all.topk(dim=-1, k=pri_fusion_size)
+            # algor 2
+            elif self.enable_topk:
+                pri_fusion_size = round(total_size * self.topk)
+                pri_fusion_size = max(pri_fusion_size, 1)
+                pri_fusion_scores, idx = doc_scores_all.topk(dim=-1, k=pri_fusion_size)
+            # algor 3
             else:
-                tmp = doc_scores_all
-                pri_fusion_size = max(int((w_pri + w_hyb) * total_size), 1)
-                pri_fusion_scores, idx = torch.topk(tmp, dim=-1, k=pri_fusion_size)
+                idx = (
+                    torch.arange(0, total_size, 1)
+                    .unsqueeze(0)
+                    .expand(doc_scores_all.size(0), -1)[:, c_size:]
+                    .to(context_ids_all)
+                )
+                pri_fusion_scores = doc_scores_all.gather(dim=1, index=idx)
+                pri_fusion_size = cp_size
+
             # print(
             #     f"""
             #     pri_fusion_size: {pri_fusion_size}
@@ -121,7 +143,7 @@ class SecureRAG(nn.Module):
             #     idx: {idx}
             #     """
             # )
-            # print(f"tmp: {tmp.gather(dim=1, index=idx)}")
+
             add_metric("pri_fusion_size", pri_fusion_size)
 
             idx = idx.unsqueeze(-1).expand(-1, -1, context_ids_all.size(-1))
@@ -188,7 +210,7 @@ class SecureRAG(nn.Module):
         else:
             return y
 
-    def eval_generate(self, batch: BatchData):
+    def eval_generate(self, batch: BatchData, output_all_ans=False):
         (
             question_ids,  # bsz * 1 * dim
             question_masks,
@@ -216,6 +238,7 @@ class SecureRAG(nn.Module):
             doc_scores=scores,
             doc_scores_private=private_scores,
             max_length=50,
+            output_all_ans=output_all_ans,
         )
         return output
 
