@@ -1,23 +1,25 @@
+import math
 from calendar import c
 from copy import deepcopy
-import math
+
 import torch
-from torch.nn import functional
 import torch.nn as nn
 import transformers
+from torch.nn import functional
+
 from securerag.data import BatchData
 from securerag.models import OutsourcingSecureModel
-from securerag.models.rag_seq import RAGSequence
 from securerag.models.fid import FiDT5
-from securerag.profiler import Profiler
+from securerag.models.rag_seq import RAGSequence
 from securerag.models.utils import merge_tensor
+from securerag.profiler import Profiler
 from securerag.utils import add_metric, clear_metric, get_metric
 
 ENABLE_DEV = True
 
 
 class SecureRAG(nn.Module):
-    def __init__(self, fidt5: FiDT5, enable_algorithm = True, enable_topk = False):
+    def __init__(self, fidt5: FiDT5, enable_algorithm=True, enable_topk=False):
         super().__init__()
         self.fidt5 = fidt5.to("cuda")
         if ENABLE_DEV:
@@ -73,7 +75,6 @@ class SecureRAG(nn.Module):
         # NOTE mark
         def adaptive_passage_selection():
 
-
             c_size = context_ids.size(1)
             cp_size = context_ids_private.size(1)
             k = total_size = c_size + cp_size
@@ -101,9 +102,7 @@ class SecureRAG(nn.Module):
 
                 eta_size = int(total_size * self.topk)
                 eta_size = max(eta_size, 1)
-                top_eta_scores, top_eta_idx = doc_scores_all.topk(
-                    dim=-1, k=eta_size
-                )
+                top_eta_scores, top_eta_idx = doc_scores_all.topk(dim=-1, k=eta_size)
                 aux_zeros = torch.zeros_like(top_eta_scores)
                 candidate_pub_scores = top_eta_scores.where(
                     top_eta_idx < c_size, aux_zeros
@@ -114,8 +113,15 @@ class SecureRAG(nn.Module):
                 condition = candidate_pub_scores.sum(-1).unsqueeze(1) < (
                     presum_scores - presum_threshold
                 )
-                pri_fusion_size = (presum_scores - presum_threshold).where(condition, aux_zeros).argmax(dim=1).float().max().item()
-                pri_fusion_size = round(pri_fusion_size + 1) # plus 1 to get length
+                pri_fusion_size = (
+                    (presum_scores - presum_threshold)
+                    .where(condition, aux_zeros)
+                    .argmax(dim=1)
+                    .float()
+                    .max()
+                    .item()
+                )
+                pri_fusion_size = round(pri_fusion_size + 1)  # plus 1 to get length
                 pri_fusion_size = max(pri_fusion_size, 1)
                 pri_fusion_scores, idx = doc_scores_all.topk(dim=-1, k=pri_fusion_size)
             # algor 2
