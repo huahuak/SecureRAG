@@ -1,41 +1,39 @@
-import cProfile
 import copy
+import cProfile
 import pstats
 import random
 import time
 import unittest
-import numpy as np
+from test.test_base import TestConfigLoggerBase
 
+import numpy as np
+import torch.utils.data.dataloader
+import transformers
 from datasets import metric
 from ray import get
-from torch.utils.data import DataLoader
-import torch.utils.data.dataloader
-from torch.profiler import record_function
-import transformers
-import securerag
-from securerag import data
-import securerag.eval
-import securerag.models
-
-from securerag.models import (
-    FiDT5,
-    RAGSequence,
-    OutsourcingSecureModel,
-    PAMLFiDT5,
-    PAMLRAGSequence,
-    SecureRAG,
-)
 from torch.profiler import (
-    profile,
     ProfilerActivity,
+    profile,
+    record_function,
     schedule,
     tensorboard_trace_handler,
 )
+from torch.utils.data import DataLoader
+
+import securerag
+import securerag.eval
+import securerag.models
+from securerag import data
+from securerag.models import (
+    FiDT5,
+    OutsourcingSecureModel,
+    PAMLFiDT5,
+    PAMLRAGSequence,
+    RAGSequence,
+    SecureRAG,
+)
 from securerag.profiler import Profiler as iprofiler
-
 from securerag.utils import add_metric, get_metric, show_metric
-from test.test_base import TestConfigLoggerBase
-
 
 NONDEBUG = True
 ENABLE_PROFILER = False
@@ -807,7 +805,7 @@ class TestAccuracyForFiD(TestFIDT5):
         #     tokenizer=self.tokenizer,
         #     cfg=self.config,
         # )
-        show_metric()
+        # show_metric()
         # for model in [self.split_agg, self.split_agg_with_adpatpf]:
         for model in [self.split_agg_with_adpatpf]:
             for d in self.d_values:
@@ -830,6 +828,7 @@ class TestAccuracyForFiD(TestFIDT5):
                     cfg=self.config,
                 )
                 show_metric()
+
 
 class TestEtaForFiD(TestFIDT5):
     def setUp(self):
