@@ -1,13 +1,15 @@
 # simulate mode: secure network via the outsourcing mechanism
-from concurrent.futures import ThreadPoolExecutor
 import copy
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable, Optional
+
 import torch
 import transformers
+
 from securerag.data import BatchData
 from securerag.eval import logger
-from securerag.models.rag_seq import RAGSequence
 from securerag.models.fid import FiDT5
+from securerag.models.rag_seq import RAGSequence
 from securerag.profiler import Profiler
 
 
