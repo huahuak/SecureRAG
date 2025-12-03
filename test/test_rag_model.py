@@ -52,7 +52,7 @@ class TestModelBase(TestConfigLoggerBase):
         cls.config.device = "cuda"
         cls.config.n_context = 10  # k
         cls.config.batch_size = 16
-        cls.config.load_size = 1000
+        cls.config.load_size = 100
         cls.config.private_passage_ratio = 0.5
 
         path = "data/open_domain_data/NQ/dev_with_scores.json"
@@ -64,7 +64,7 @@ class TestModelBase(TestConfigLoggerBase):
 
         # for auto eval
         self.k_values = np.linspace(5, 15, 3, dtype=int)
-        self.eta_values = np.round(np.linspace(1.5, 2.5, 3), 1)
+        self.eta_values = np.linspace(1.5, 2.5, 5)
         self.d_values = np.round(np.linspace(0.1, 0.9, 5), 1)
 
         if ENABLE_PROFILER:
@@ -834,7 +834,7 @@ class TestEtaForFiD(TestFIDT5):
     def setUp(self):
         self.config.n_context = 10  # k
         self.config.batch_size = 16
-        self.config.load_size = 1000
+        self.config.load_size = 100
 
         super().setUp()
 
@@ -873,3 +873,217 @@ class TestEtaForFiD(TestFIDT5):
                     self.split_agg_with_adpatpf,
                     self.dataloader,
                 )
+
+
+class TestLinearLayerOffloadingLimitation(TestConfigLoggerBase):
+    def test_limitation(self):
+        import time  # Wall-clock timing
+
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import torch  # PyTorch for tensor operations
+
+        # ----- Configuration and Data Collection -----
+        Ns = [768, 1024, 2048]
+        benchmark_results = []
+        WARMUP_RUNS = 5  # Number of runs to discard to ensure stability
+
+        for N in Ns:
+            # ----- Data Setup (CPU) -----
+            A_cpu = torch.rand(16 * 10, 200, N, dtype=torch.float32)
+            B_cpu = torch.rand(N, N, dtype=torch.float32)
+
+            # ----- CPU Matmul Timing (No overhead concern, but still accurate) -----
+            start = time.time()
+            C_cpu = torch.matmul(A_cpu, B_cpu)
+            cpu_time = time.time() - start
+
+            # ----- GPU Warm-up Phase (Excluding Influence) -----
+            # 1. Transfer B to GPU once (static matrix)
+            B_gpu = B_cpu.to("cuda")
+
+            # 2. Perform several dummy runs to trigger JIT compilation and context setup
+            print(f"Warming up for N={N}...")
+            for _ in range(WARMUP_RUNS):
+                A_gpu_dummy = A_cpu.to("cuda")  # H2D transfer
+                C_gpu_dummy = torch.matmul(A_gpu_dummy, B_gpu)  # Compute
+                C_gpu_dummy.to("cpu")  # D2H transfer
+                torch.cuda.synchronize()  # Wait for everything to finish
+
+            # ----- GPU Matmul and Transfer Timing (Measuring steady-state) -----
+
+            # Time H2D Transfer
+            torch.cuda.synchronize()
+            start = time.time()
+            A_gpu = A_cpu.to("cuda")  # Transfer A
+            torch.cuda.synchronize()
+            h2d_time = time.time() - start
+
+            # Time GPU Compute
+            torch.cuda.synchronize()
+            start = time.time()
+            C_gpu = torch.matmul(A_gpu, B_gpu)
+            torch.cuda.synchronize()
+            gpu_compute_time = time.time() - start
+
+            # Time D2H Transfer
+            torch.cuda.synchronize()
+            start = time.time()
+            C_result = C_gpu.to("cpu")
+            torch.cuda.synchronize()
+            d2h_time = time.time() - start
+
+            gpu_total_time = h2d_time + gpu_compute_time + d2h_time
+
+            # Store (CPU_Time, H2D, Compute, D2H, GPU_Total)
+            benchmark_results.append(
+                (cpu_time, h2d_time, gpu_compute_time, d2h_time, gpu_total_time)
+            )
+
+        # --- PLOTTING (Remaining code is unchanged from the last styled version) ---
+        plt.figure(figsize=(7, 5), dpi=300)
+
+        # ----- X positions and bar width -----
+        x_indices = np.arange(len(Ns))  # Indices for N=768, 1024, 2048
+        width = 0.35
+        group_spacing = 0.5  # Space between N groups
+
+        # Positions for CPU bars (left) and GPU bars (right)
+        x_cpu = x_indices - width / 2
+        x_gpu = x_indices + width / 2
+
+        # ----- Bar Labels and Colors (Matching First Example Style) -----
+        gpu_colors = ["tab:olive", "tab:orange", "tab:green"]  # H2D, Compute, D2H
+        gpu_labels = ["Host to Device", "GPU Compute", "Device to Host"]
+
+        # We use the list to track which legend items have been drawn
+        legend_handles = []
+        legend_labels = []
+
+        # ----- Plotting Loop for each N size -----
+        for i, N in enumerate(Ns):
+            cpu_t, h2d_t, gpu_c, d2h_t, gpu_t = benchmark_results[i]
+            current_x_gpu = x_gpu[i]
+
+            # --- 1. CPU Bar ---
+            # Draw only the first CPU bar to get the legend handle
+            if i == 0:
+                cpu_bar = plt.bar(
+                    x_cpu[i], cpu_t, width=width, color="tab:brown", label="CPU Compute"
+                )
+                legend_handles.append(cpu_bar)
+                legend_labels.append("CPU Compute")
+            else:
+                plt.bar(x_cpu[i], cpu_t, width=width, color="tab:brown")
+
+            # Add text label for CPU time
+            plt.text(x_cpu[i], cpu_t + 0.001, f"{cpu_t:.3f}", ha="center", fontsize=12)
+
+            # --- 2. GPU Stacked Bar ---
+            gpu_values = [h2d_t, gpu_c, d2h_t]
+            # Bottoms calculation must be cumulative
+            gpu_bottoms = [0, h2d_t, h2d_t + gpu_c]
+
+            for j, (val, bottom, color, label) in enumerate(
+                zip(gpu_values, gpu_bottoms, gpu_colors, gpu_labels)
+            ):
+                # Draw the bar segment
+                bar_segment = plt.bar(
+                    current_x_gpu, val, bottom=bottom, width=width, color=color
+                )
+
+                # Draw the legend handle only on the first N (i=0)
+                if i == 0:
+                    legend_handles.append(bar_segment)
+                    legend_labels.append(label)
+
+                # Add percentage label to the segment
+                plt.text(
+                    current_x_gpu,
+                    bottom + val / 2,
+                    f"{val/gpu_t*100:.1f}%",
+                    ha="center",
+                    fontsize=12,
+                    color="white",
+                )
+
+            # Add text label for GPU total time
+            plt.text(
+                current_x_gpu, gpu_t + 0.001, f"{gpu_t:.3f}", ha="center", fontsize=12
+            )
+
+        # ----- X-axis labels -----
+        plt.xticks(x_indices, [str(N) for N in Ns])
+
+        # ----- Labels and title -----
+        plt.ylabel("Runtime (seconds)", fontsize=12)
+        plt.xlabel("Matrix Dimension N", fontsize=12)
+
+        # ----- Legend outside the plot to the right -----
+        plt.legend(legend_handles, legend_labels, fontsize=12, loc="upper left")
+        plt.grid(True, which="major", linestyle=":", color="gray", alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig("tmp.png")
+
+    def test_print_memmv_and_flops(self):
+        import pandas as pd
+
+        # ----- Constants for robust timing -----
+        Ns = [768, 1024, 2048]
+
+        def calculate_metrics(N, batch_size=160, inner_dim=200, dtype_size=4):
+            """
+            A shape: (batch_size * inner_dim) x N
+            B shape: N x N
+            """
+
+            # --- 1. FLOPS Calculation ---
+            # Batched Matmul: (B*M) x K @ K x N -> (B*M) x N
+            # Your A is (160*200) x N, B is N x N. M=1, K=N, N=N, B=160*200
+            B = batch_size * inner_dim  # 32000
+            M = 1
+            K = N
+            N_mat = N
+
+            # FLOPS = Batch_Size * 2 * M * N_mat * K
+            total_flops = B * 2 * N * N
+
+            # --- 2. Memory Size Calculation (Bytes) ---
+            # Memory = (Input A + Input B + Output C) * 4 Bytes (for float32)
+            size_A = B * N * dtype_size
+            size_B = N * N * dtype_size
+            size_C = B * N * dtype_size
+
+            total_bytes = size_A + size_B + size_C
+
+            # --- 3. Arithmetic Intensity ---
+            intensity = total_flops / total_bytes
+
+            return total_flops, total_bytes, intensity
+
+        print("--- Theoretical Matmul Analysis ---")
+        data = []
+        for N in Ns:
+            flops, bytes_size, intensity = calculate_metrics(N)
+            data.append(
+                {
+                    "N": N,
+                    "FLOPS (G)": flops / 1e9,
+                    "Memory (GB)": bytes_size / (1024**3),
+                    "Intensity (FLOPS/Byte)": intensity,
+                }
+            )
+
+            # ----- Create and Print Pandas DataFrame -----
+            df = pd.DataFrame(data)
+
+            # Optional: Format the numbers for cleaner display
+            pd.set_option("display.float_format", lambda x: f"{x:,.3f}")
+            df["FLOPS (G)"] = df["FLOPS (G)"].map(
+                lambda x: f"{x:,.2f}"
+            )  # Keep GFLOPS to 2 decimal places
+
+            print("\nTheoretical Matmul Analysis (FLOPS vs. Memory)")
+            print("---------------------------------------------")
+            print(f"\n{df.to_string(index=False)}\n")

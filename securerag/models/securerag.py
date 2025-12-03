@@ -15,7 +15,7 @@ from securerag.models.utils import merge_tensor
 from securerag.profiler import Profiler
 from securerag.utils import add_metric, clear_metric, get_metric
 
-ENABLE_DEV = True
+ENABLE_DEV = False
 
 
 class SecureRAG(nn.Module):
