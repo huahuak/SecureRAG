@@ -6,6 +6,7 @@ import torch  # PyTorch for tensor operations
 
 # ----- Configuration and Data Collection -----
 Ns = [768, 1024, 2048]
+Ks = [5, 10, 15]
 benchmark_results = []
 
 # Constants for robust timing
@@ -16,9 +17,10 @@ N_MEASUREMENTS = 100  # Times to measure and average
 start_event = torch.cuda.Event(enable_timing=True)
 end_event = torch.cuda.Event(enable_timing=True)
 
-for N in Ns:
+for K in Ks:
+    N = 768
     # ----- Data Setup -----
-    A_cpu = torch.rand(16 * 10, 200, N, dtype=torch.float32)
+    A_cpu = torch.rand(16 * K, 200, N, dtype=torch.float32)
     B_cpu = torch.rand(N, N, dtype=torch.float32)
 
     # Pre-transfer B to GPU once (static matrix)
@@ -35,7 +37,7 @@ for N in Ns:
     cpu_time = np.mean(cpu_times)
 
     # ----- 2. GPU Warm-up Phase (Excluding Cold Start Influence) -----
-    print(f"Warming up for N={N}...")
+    print(f"Warming up for K={K}...")
     for _ in range(WARMUP_RUNS):
         A_gpu_dummy = A_cpu.to("cuda")  # H2D transfer
         C_gpu_dummy = torch.matmul(A_gpu_dummy, B_gpu)  # Compute
@@ -105,7 +107,7 @@ legend_handles = []
 legend_labels = []
 
 # ----- Plotting Loop for each N size -----
-for i, N in enumerate(Ns):
+for i, K in enumerate(Ks):
     cpu_t, h2d_t, gpu_c, d2h_t, gpu_t = benchmark_results[i]
     current_x_gpu = x_gpu[i]
 
@@ -126,7 +128,7 @@ for i, N in enumerate(Ns):
         plt.bar(x_cpu[i], cpu_t, width=width, color="tab:green", edgecolor="black")
 
     # Add text label for CPU time
-    plt.text(x_cpu[i], cpu_t + 0.005, f"{cpu_t:.3f}", ha="center", fontsize=14)
+    plt.text(x_cpu[i], cpu_t + 0.001, f"{cpu_t:.3f}", ha="center", fontsize=14)
 
     # --- 2. GPU Stacked Bar ---
     gpu_values = [
@@ -167,14 +169,14 @@ for i, N in enumerate(Ns):
         )
 
     # Add text label for GPU total time
-    plt.text(current_x_gpu, gpu_t + 0.005, f"{gpu_t:.3f}", ha="center", fontsize=14)
+    plt.text(current_x_gpu, gpu_t + 0.001, f"{gpu_t:.3f}", ha="center", fontsize=14)
 
 # ----- X-axis labels -----
-plt.xticks(x_indices, [str(N) for N in Ns])
+plt.xticks(x_indices, [str(K) for K in Ks])
 
 # ----- Labels and title -----
 plt.ylabel("Runtime (seconds)", fontsize=14)
-plt.xlabel("Matrix Dimension N", fontsize=14)
+plt.xlabel("The number of retrieved passages K", fontsize=14)
 
 # ----- Legend outside the plot to the right -----
 plt.legend(legend_handles, legend_labels, fontsize=14, loc="upper left")

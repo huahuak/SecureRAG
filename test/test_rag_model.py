@@ -4,7 +4,6 @@ import pstats
 import random
 import time
 import unittest
-from test.test_base import TestConfigLoggerBase
 
 import numpy as np
 import torch.utils.data.dataloader
@@ -34,6 +33,7 @@ from securerag.models import (
 )
 from securerag.profiler import Profiler as iprofiler
 from securerag.utils import add_metric, get_metric, show_metric
+from test.test_base import TestConfigLoggerBase
 
 NONDEBUG = True
 ENABLE_PROFILER = False
@@ -650,7 +650,7 @@ class TestSecureRAG(TestModelBase):
                     add_metric("time", timeused)
                     print(f"k is {k}, eta is {eta}, d is {ratio}")
                     print(
-                        f'ex: {get_metric("ex")}, f1: {get_metric("f1")}, time: {get_metric("time")}'
+                        f"ex: {get_metric('ex')}, f1: {get_metric('f1')}, time: {get_metric('time')}"
                     )
 
     def test_generate(self):
@@ -1001,7 +1001,7 @@ class TestLinearLayerOffloadingLimitation(TestConfigLoggerBase):
                 plt.text(
                     current_x_gpu,
                     bottom + val / 2,
-                    f"{val/gpu_t*100:.1f}%",
+                    f"{val / gpu_t * 100:.1f}%",
                     ha="center",
                     fontsize=12,
                     color="white",
