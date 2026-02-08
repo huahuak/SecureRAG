@@ -1,15 +1,17 @@
+import string
 from collections import Counter
 from pathlib import Path
-import string
 from venv import logger
+
 import numpy as np
 import regex
 import torch
+from transformers import RagSequenceForGeneration
 
 from securerag.data import Profiler
 from securerag.utils import add_metric
+
 from .models import FiDT5
-from transformers import RagSequenceForGeneration
 
 
 def normalize(s):
@@ -49,6 +51,7 @@ def get_exact_match_score(answer, targets):
     normalize_answer = normalize(answer)
     return max([normalize_answer == normalize(it) for it in targets])
 
+
 @Profiler("eval.test_evaluate")
 def test_evaluate(model, dataset, dataloader, tokenizer, cfg):
     loss, curr_loss = 0.0, 0.0
@@ -72,7 +75,6 @@ def test_evaluate(model, dataset, dataloader, tokenizer, cfg):
                 f1 = get_f1_score(ans, example["answers"])
             ex_list.append(ex)
             f1_list.append(f1)
-            
 
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
@@ -94,7 +96,9 @@ def test_evaluate(model, dataset, dataloader, tokenizer, cfg):
                     log += f" | f1 average = {np.mean(f1s):.3f}"
                 logger.warning(log)
 
-    logger.warning(f"(test)Process: total {total} | ex average = {np.mean(exactmatch):.3f}")
+    logger.warning(
+        f"(test)Process: total {total} | ex average = {np.mean(exactmatch):.3f}"
+    )
     logger.warning(f"(test)Process: total {total} | f1 average = {np.mean(f1s):.3f}")
 
     # add metric
@@ -104,7 +108,7 @@ def test_evaluate(model, dataset, dataloader, tokenizer, cfg):
     add_metric("f1", np.mean(f1s))
     add_metric("f1_pub", np.mean(f1s_pub))
     add_metric("f1_pri", np.mean(f1s_pri))
-    
+
 
 @Profiler("eval.evaluate")
 def evaluate(model, dataset, dataloader, tokenizer, cfg):

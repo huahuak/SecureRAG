@@ -56,6 +56,15 @@ def clear_metric(name) -> List[int]:
     return metric_map.pop(name, [])
 
 
+def delete_metric():
+    metric_map.clear()
+
+
+def dump_metric(filepath):
+    with open(filepath, "w", encoding="utf-8") as file:
+        json.dump(metric_map, file, indent=2)
+
+
 def show_metric():
     def map_print(data):
         formatted = json.dumps(
@@ -66,7 +75,7 @@ def show_metric():
     map_print(metric_map)
     map_print(
         {
-            k: [np.mean(v), np.min(v), np.max(v), np.sum(v)]
+            k + "(statics)": [np.mean(v), np.min(v), np.max(v), np.sum(v)]
             for k, v in metric_map.items()
         }
     )

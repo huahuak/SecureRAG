@@ -4,12 +4,14 @@ import pstats
 import random
 import time
 import unittest
+from test.test_base import TestConfigLoggerBase
 
 import numpy as np
 import torch.utils.data.dataloader
 import transformers
 from datasets import metric
 from ray import get
+from ray.data import context
 from torch.profiler import (
     ProfilerActivity,
     profile,
@@ -22,6 +24,7 @@ from torch.utils.data import DataLoader
 import securerag
 import securerag.eval
 import securerag.models
+import securerag.profiler
 from securerag import data
 from securerag.models import (
     FiDT5,
@@ -32,8 +35,13 @@ from securerag.models import (
     SecureRAG,
 )
 from securerag.profiler import Profiler as iprofiler
-from securerag.utils import add_metric, get_metric, show_metric
-from test.test_base import TestConfigLoggerBase
+from securerag.utils import (
+    add_metric,
+    delete_metric,
+    dump_metric,
+    get_metric,
+    show_metric,
+)
 
 NONDEBUG = True
 ENABLE_PROFILER = False
@@ -49,7 +57,7 @@ class TestModelBase(TestConfigLoggerBase):
         random.seed(42)  # fixed shuffle
         torch.manual_seed(42)
         super().setUpClass()
-        cls.config.device = "cuda"
+        cls.config.device = "cpu"
         cls.config.n_context = 10  # k
         cls.config.batch_size = 16
         cls.config.load_size = 100
@@ -1087,3 +1095,114 @@ class TestLinearLayerOffloadingLimitation(TestConfigLoggerBase):
             print("\nTheoretical Matmul Analysis (FLOPS vs. Memory)")
             print("---------------------------------------------")
             print(f"\n{df.to_string(index=False)}\n")
+
+
+class TestFiDT5ExecutionTime(TestFIDT5):
+    def setUp(self):
+        self.bsz = np.linspace(1, 64, 16, dtype=int)
+        super().setUp()
+
+    def testFiDT5CPUExecutionTime(self):
+        self.model = self.model.to("cpu")
+        for i, batch in enumerate(self.data_loader):
+            (
+                idx,
+                question_ids,
+                question_masks,
+                context_ids,
+                context_masks,
+                scores,
+            ) = (
+                batch.index,
+                batch.question_ids,
+                batch.question_masks,
+                batch.passage_ids,
+                batch.passage_masks,
+                batch.scores,
+            )
+            outputs = self.model.generate(
+                input_ids=context_ids,
+                attention_mask=context_masks,
+                max_length=50,
+            )
+        show_metric()
+
+    def testMultipleRoundCPUExecutionTime(self):
+        for batch_size in self.bsz:
+            self.config.batch_size = int(batch_size)
+            self.data_loader = torch.utils.data.dataloader.DataLoader(
+                dataset=self.dataset,
+                batch_size=self.config.batch_size,
+                collate_fn=data.FiDT5Collator(
+                    tokenizer=self.tokenizer,
+                    text_maxlength=self.config.text_maxlength,
+                    answer_maxlength=self.config.answer_maxlength,
+                ),
+            )
+            self.testFiDT5CPUExecutionTime()
+            self.plotHelper(f"batch_size-{batch_size}")
+            dump_metric(f"tmp/cpu-batch_size-{batch_size}.json")
+            delete_metric()
+
+    def testMultipleRoundGPUExecutionTime(self):
+        for batch_size in self.bsz:
+            self.config.batch_size = int(batch_size)
+            self.data_loader = torch.utils.data.dataloader.DataLoader(
+                dataset=self.dataset,
+                batch_size=self.config.batch_size,
+                collate_fn=data.FiDT5Collator(
+                    tokenizer=self.tokenizer,
+                    text_maxlength=self.config.text_maxlength,
+                    answer_maxlength=self.config.answer_maxlength,
+                ),
+            )
+            self.testFiDT5GPUExecutionTime()
+            self.plotHelper(f"gpu-batch_size-{batch_size}")
+            dump_metric(f"tmp/gpu-batch_size-{batch_size}.json")
+            delete_metric()
+
+    def plotHelper(self, name=""):
+        import matplotlib.pyplot as plt
+
+        encoder_timer = get_metric("ENCODER_TIMER")
+        decoder_timer = get_metric("DECODER_TIMER")
+        decoder_gen_timer = get_metric("DECODER_GENERATION_TIMER")
+
+        fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
+
+        axes[0].plot(encoder_timer)
+        axes[0].set_title("ENCODER_TIMER")
+
+        axes[1].plot(decoder_timer)
+        axes[1].set_title("DECODER_TIMER")
+
+        axes[2].plot(decoder_gen_timer)
+        axes[2].set_title("DECODER_GENERATION_TIMER")
+
+        plt.tight_layout()
+        plt.savefig(f"tmp/pic-{name}.png")
+
+    def testFiDT5GPUExecutionTime(self):
+        self.model = self.model.to("cuda")
+        for i, batch in enumerate(self.data_loader):
+            (
+                idx,
+                question_ids,
+                question_masks,
+                context_ids,
+                context_masks,
+                scores,
+            ) = (
+                batch.index,
+                batch.question_ids,
+                batch.question_masks,
+                batch.passage_ids,
+                batch.passage_masks,
+                batch.scores,
+            )
+            outputs = self.model.generate(
+                input_ids=context_ids.to("cuda"),
+                attention_mask=context_masks.to("cuda"),
+                max_length=50,
+            )
+            outputs.to("cpu")
