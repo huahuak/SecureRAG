@@ -10,8 +10,6 @@ import numpy as np
 import torch.utils.data.dataloader
 import transformers
 from datasets import metric
-from ray import get
-from ray.data import context
 from torch.profiler import (
     ProfilerActivity,
     profile,
@@ -1099,8 +1097,23 @@ class TestLinearLayerOffloadingLimitation(TestConfigLoggerBase):
 
 class TestFiDT5ExecutionTime(TestFIDT5):
     def setUp(self):
-        self.bsz = np.linspace(1, 64, 16, dtype=int)
+        self.bsz = np.linspace(1, 64, 5, dtype=int)
+        self.ks = np.linspace(4, 16, 4, dtype=int)
         super().setUp()
+
+    def getDataLoader(self, bsz, k=10):
+        path = "data/open_domain_data/NQ/dev_with_scores.json"
+        datas = data.load(path=path, size=self.config.load_size)
+        dataset = data.Dataset(data=datas, n_context=k)
+        return torch.utils.data.dataloader.DataLoader(
+            dataset=dataset,
+            batch_size=bsz,
+            collate_fn=data.FiDT5Collator(
+                tokenizer=self.tokenizer,
+                text_maxlength=self.config.text_maxlength,
+                answer_maxlength=self.config.answer_maxlength,
+            ),
+        )
 
     def testFiDT5CPUExecutionTime(self):
         self.model = self.model.to("cpu")
@@ -1129,37 +1142,29 @@ class TestFiDT5ExecutionTime(TestFIDT5):
 
     def testMultipleRoundCPUExecutionTime(self):
         for batch_size in self.bsz:
-            self.config.batch_size = int(batch_size)
-            self.data_loader = torch.utils.data.dataloader.DataLoader(
-                dataset=self.dataset,
-                batch_size=self.config.batch_size,
-                collate_fn=data.FiDT5Collator(
-                    tokenizer=self.tokenizer,
-                    text_maxlength=self.config.text_maxlength,
-                    answer_maxlength=self.config.answer_maxlength,
-                ),
-            )
-            self.testFiDT5CPUExecutionTime()
-            self.plotHelper(f"batch_size-{batch_size}")
-            dump_metric(f"tmp/cpu-batch_size-{batch_size}.json")
-            delete_metric()
+            for k in self.ks:
+                self.config.batch_size = int(batch_size)
+                self.config.n_context = int(k)
+                self.data_loader = self.getDataLoader(
+                    bsz=self.config.batch_size, k=self.config.n_context
+                )
+                self.testFiDT5CPUExecutionTime()
+                self.plotHelper(f"batch_size-{batch_size}-k-{k}")
+                dump_metric(f"tmp/cpu-batch_size-{batch_size}-k-{k}.json")
+                delete_metric()
 
     def testMultipleRoundGPUExecutionTime(self):
         for batch_size in self.bsz:
-            self.config.batch_size = int(batch_size)
-            self.data_loader = torch.utils.data.dataloader.DataLoader(
-                dataset=self.dataset,
-                batch_size=self.config.batch_size,
-                collate_fn=data.FiDT5Collator(
-                    tokenizer=self.tokenizer,
-                    text_maxlength=self.config.text_maxlength,
-                    answer_maxlength=self.config.answer_maxlength,
-                ),
-            )
-            self.testFiDT5GPUExecutionTime()
-            self.plotHelper(f"gpu-batch_size-{batch_size}")
-            dump_metric(f"tmp/gpu-batch_size-{batch_size}.json")
-            delete_metric()
+            for k in self.ks:
+                self.config.batch_size = int(batch_size)
+                self.config.n_context = int(k)
+                self.data_loader = self.getDataLoader(
+                    bsz=self.config.batch_size, k=self.config.n_context
+                )
+                self.testFiDT5GPUExecutionTime()
+                self.plotHelper(f"gpu-batch_size-{batch_size}-k-{k}")
+                dump_metric(f"tmp/gpu-batch_size-{batch_size}-k-{k}.json")
+                delete_metric()
 
     def plotHelper(self, name=""):
         import matplotlib.pyplot as plt

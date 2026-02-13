@@ -62,7 +62,14 @@ def delete_metric():
 
 def dump_metric(filepath):
     with open(filepath, "w", encoding="utf-8") as file:
-        json.dump(metric_map, file, indent=2)
+        data = {
+            "raw": metric_map,
+            "statics": {
+                k + "(statics)": [np.mean(v), np.min(v), np.max(v), np.sum(v)]
+                for k, v in metric_map.items()
+            },
+        }
+        json.dump(data, file, indent=2)
 
 
 def show_metric():
