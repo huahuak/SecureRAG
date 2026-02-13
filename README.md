@@ -1,3 +1,0 @@
-# SecureRAG
-
-# TODO
