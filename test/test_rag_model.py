@@ -1097,8 +1097,8 @@ class TestLinearLayerOffloadingLimitation(TestConfigLoggerBase):
 
 class TestFiDT5ExecutionTime(TestFIDT5):
     def setUp(self):
-        self.bsz = np.linspace(1, 64, 5, dtype=int)
-        self.ks = np.linspace(4, 16, 4, dtype=int)
+        self.bsz = np.linspace(1, 64, 9, dtype=int)
+        self.ks = np.linspace(4, 16, 13, dtype=int)
         super().setUp()
 
     def getDataLoader(self, bsz, k=10):
