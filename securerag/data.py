@@ -1,8 +1,9 @@
-from audioop import reverse
-from dataclasses import dataclass
 import json
 import random
+from audioop import reverse
+from dataclasses import dataclass
 from typing import Optional
+
 import torch
 
 from securerag.profiler import Profiler
