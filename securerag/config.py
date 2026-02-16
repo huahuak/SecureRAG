@@ -24,7 +24,7 @@ class Config:
         self.parser.add_argument("--log_path", type=str, default="./log/stdout.log")
 
     def __add_generator_options(self):
-        self.parser.add_argument("--n_context", type=int, default=100)
+        self.parser.add_argument("--n_context", type=int, default=10)
         self.parser.add_argument("--batch_size", type=int, default=2)
         self.parser.add_argument("--text_maxlength", type=int, default=200)
         self.parser.add_argument("--answer_maxlength", type=int, default=50)
@@ -37,5 +37,5 @@ class Config:
         self.parser.add_argument("--private_passage_ratio", type=float, default=0.5)
 
     def __add_service_options(self):
-        self.parser.add_argument("--encoder_service_port", type=str, default="8080")
-        self.parser.add_argument("--decoder_service_port", type=str, default="8081")
+        self.parser.add_argument("--tee_service_port", type=str, default="8080")
+        self.parser.add_argument("--gpu_service_port", type=str, default="8081")

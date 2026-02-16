@@ -112,8 +112,8 @@ def tokenizer_encode_batch(batch_text_passages, tokenizer, max_length):
             return_tensors="pt",
             truncation=True,
         )
-        passage_ids.append(p["input_ids"][None])
-        passage_masks.append(p["attention_mask"][None])
+        passage_ids.append(p["input_ids"])
+        passage_masks.append(p["attention_mask"])
 
     passage_ids = torch.cat(passage_ids, dim=0)
     passage_masks = torch.cat(passage_masks, dim=0)

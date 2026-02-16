@@ -34,6 +34,7 @@ class Task:
     def create_task_from_request(req: Request):
         data = req.input_data
         private_passage_size = req.private_passage_size
+        print(f"private_passage_size: {private_passage_size}")
 
         public_data = {
             "index": data["question"],
@@ -69,7 +70,9 @@ class Task:
             if t is None:
                 return
             t.contiguous()
-            return messages_pb2.LocalSharedTensor(byte=t.numpy().tobytes(), shape=t.shape)
+            return messages_pb2.LocalSharedTensor(
+                byte=t.numpy().tobytes(), shape=t.shape
+            )
 
         rpc_input = messages_pb2.Data(
             question=input["question"],
@@ -131,6 +134,9 @@ class BatchTask:
         self.tasks = tasks
         return self
 
+    def passage_per_task(self):
+        return [len(task.input["passages"]) for task in self.tasks]
+
     def rpc_execute(self, stub):
         pass
 
@@ -150,7 +156,6 @@ class BatchEncoderTask(BatchTask, EncoderService):
         stub.ExecuteBatchEncoderTask(request)
 
     def _tokenizer(self, batch):
-        scores = torch.stack([ex["scores"] for ex in batch])
         passages = []
         for example in batch:
             question_prefix = "question:"
@@ -164,15 +169,18 @@ class BatchEncoderTask(BatchTask, EncoderService):
                 + passage_prefix
                 + " {}"
             )
-            for t in example["passages"]:
-                passages.append(f.format(example["question"], t["title"], t["text"]))
+            passages.append(
+                [
+                    f.format(example["question"], t["title"], t["text"])
+                    for t in example["passages"]
+                ]
+            )
         passage_ids, passage_masks = tokenizer_encode_batch(
             passages, self.tokenizer, self.text_maxlength
         )
         return BatchData(
             passage_ids=passage_ids,
             passage_masks=passage_masks,
-            scores=scores,
         )
 
     def ExecuteBatchEncoderTask(self, request, context):
@@ -182,29 +190,27 @@ class BatchEncoderTask(BatchTask, EncoderService):
         (
             context_ids,
             context_masks,
-            scores,
         ) = (
             batch.passage_ids,
             batch.passage_masks,
-            batch.scores,
         )
-        context_ids = context_ids.view(context_ids.size(0), -1)
-        context_masks = context_masks.view(context_masks.size(0), -1)
+        print(context_ids.shape)
         output = self.encoder(
-            input_ids=context_ids.to(self.device),
-            attention_mask=context_masks.to(self.device),
-            max_length=50,
+            input_ids=context_ids,
+            attention_mask=context_masks,
+            return_dict=True,
         )
         return messages_pb2.Response()
 
     def start_service(self, cfg):
         self.text_maxlength = cfg.text_maxlength
+        self.answer_maxlength = cfg.answer_maxlength
 
         model_path = cfg.generator_model_path
         model: FiDT5 = FiDT5.from_pretrained(model_path)
         model.to("cpu")
         model.eval()
-        self.encoder = model.get_encoder()
+        self.encoder = model.get_encoder().encoder
 
         self.tokenizer: transformers.T5Tokenizer = (
             transformers.T5Tokenizer.from_pretrained(
@@ -228,7 +234,7 @@ class BatchDecoderTask(BatchTask, DecoderService):
         pass
 
     def start_service(self):
-        server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=40))
         add_EncoderServiceServicer_to_server(self, server)
         server.add_insecure_port(f"[::]:{self.port}")
         server.start()

@@ -16,6 +16,8 @@ from securerag.scheduler.tasks import (
 class Dispatcher:
     def __init__(self, config):
         self.load_size = config.load_size
+        self.tee_service_port = config.tee_service_port
+        self.gpu_service_port = config.gpu_service_port
         self.finished_size = 0
 
         self.request_source = None
@@ -28,15 +30,15 @@ class Dispatcher:
         self.running = True
         self.queue_lock = threading.Lock()
 
-        self.tee_batch_size = 1
+        self.tee_batch_size = 2
         self.gpu_batch_size = 32
 
     def registry_request_source(self, source: RequestSource):
         self.request_source = source
 
-    def endpoint_loop(self, cfg):
-        tee_loop_threead = threading.Thread(target=self.tee_loop, args=(cfg,))
-        gpu_loop_threead = threading.Thread(target=self.gpu_loop, args=(cfg,))
+    def endpoint_loop(self):
+        tee_loop_threead = threading.Thread(target=self.tee_loop)
+        gpu_loop_threead = threading.Thread(target=self.gpu_loop)
         tee_loop_threead.start()
         gpu_loop_threead.start()
         while self.finished_size < self.load_size:
@@ -52,8 +54,8 @@ class Dispatcher:
                 self.gpu_encoder_task_queue.append(pri)
             self.queue_lock.release()
 
-    def tee_loop(self, cfg):
-        port = cfg.encoder_service_port
+    def tee_loop(self):
+        port = self.tee_service_port
         channel = grpc.insecure_channel(f"localhost:{port}")
         stub = messages_pb2_grpc.EncoderServiceStub(channel)
         while self.running:
@@ -65,13 +67,15 @@ class Dispatcher:
             if encoder_task_waiting_time >= decoder_task_waiting_time:
                 # schedule request priority
                 tasks = self.tee_encoder_task_queue.pop_shortest_tasks(self.tee_batch_size)
+                if len(tasks) == 0:
+                    return
                 batch = BatchEncoderTask().add_tasks(tasks)
                 batch.rpc_execute(stub)
             else:
                 pass
             self.queue_lock.release()
 
-    def gpu_loop(self, cfg):
+    def gpu_loop(self):
         while self.running:
             self.queue_lock.acquire()
             self.queue_lock.release()

@@ -1,4 +1,3 @@
-
 import time
 from test.test_base import TestConfigLoggerBase
 
@@ -19,12 +18,11 @@ class TestUnit(TestConfigLoggerBase):
             print("arrived request as follow:")
             for req in reqs:
                 print(req.arrive_time)
-            
-        
+
     def test_encoder_rpc_service(self):
         service = BatchEncoderTask()
         service.start_service(self.config)
-    
+
     def test_encoder_rpc_client(self):
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         local_request = LocalRequestSource()
@@ -32,5 +30,4 @@ class TestUnit(TestConfigLoggerBase):
 
         dispatcher = Dispatcher(self.config)
         dispatcher.registry_request_source(local_request)
-        dispatcher.endpoint_loop(self.config)
-        
+        dispatcher.endpoint_loop()

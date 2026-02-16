@@ -23,6 +23,8 @@ class RequestSource:
 
 class LocalRequestSource(RequestSource):
     def __init__(self):
+        random.seed(2025)
+
         self.dataset = None
         self.curr = 0
         self.lasttime = time.time()
@@ -58,5 +60,4 @@ class LocalRequestSource(RequestSource):
         return output
 
     def get_private_passage_ratio(self):
-        random.seed(2025)
         return random.random()
