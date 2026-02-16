@@ -141,11 +141,7 @@ class BatchTask:
         pass
 
 
-class BatchEncoderTask(BatchTask, EncoderService):
-    def __init__(self):
-        self.port = 8080
-        pass
-
+class BatchEncoderTask(BatchTask):
     def rpc_execute(self, stub: EncoderServiceStub):
         print("rpc_execute...")
         rpc_tasks = []
@@ -154,6 +150,40 @@ class BatchEncoderTask(BatchTask, EncoderService):
         request = messages_pb2.Request(tasks=rpc_tasks)
         # stub.ExecuteBatchEncoderTask.future(request)
         stub.ExecuteBatchEncoderTask(request)
+
+
+class BatchDecoderTask(BatchTask):
+    def rpc_execute(self, stub: EncoderServiceStub):
+        pass
+
+
+class EncoderDecoderSerivce(EncoderService, DecoderService):
+    def __init__(self, cfg, type):
+        tee_port = cfg.tee_service_port
+        gpu_port = cfg.gpu_service_port
+
+        self.text_maxlength = cfg.text_maxlength
+        self.answer_maxlength = cfg.answer_maxlength
+
+        model_path = cfg.generator_model_path
+        model: FiDT5 = FiDT5.from_pretrained(model_path)
+        model.eval()
+        self.encoder = model.get_encoder().encoder
+        self.decoder = model.get_decoder()
+        self.tokenizer: transformers.T5Tokenizer = (
+            transformers.T5Tokenizer.from_pretrained(
+                "models/t5-base", return_dict=False
+            )
+        )
+
+        self.port = None
+        self.type = type
+        if type == "TEE":
+            self.port = tee_port
+            model.to("cpu")
+        elif type == "GPU":
+            self.port = gpu_port
+            model.to("cuda")
 
     def _tokenizer(self, batch):
         passages = []
@@ -202,41 +232,13 @@ class BatchEncoderTask(BatchTask, EncoderService):
         )
         return messages_pb2.Response()
 
-    def start_service(self, cfg):
-        self.text_maxlength = cfg.text_maxlength
-        self.answer_maxlength = cfg.answer_maxlength
+    def ExecuteBatchDecoderTask(self, request, context):
+        pass
 
-        model_path = cfg.generator_model_path
-        model: FiDT5 = FiDT5.from_pretrained(model_path)
-        model.to("cpu")
-        model.eval()
-        self.encoder = model.get_encoder().encoder
-
-        self.tokenizer: transformers.T5Tokenizer = (
-            transformers.T5Tokenizer.from_pretrained(
-                "models/t5-base", return_dict=False
-            )
-        )
-
-        server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
+    def start_service(self, worker_num=1):
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=worker_num))
         add_EncoderServiceServicer_to_server(self, server)
         server.add_insecure_port(f"[::]:{self.port}")
         server.start()
-        print("Encoder service running...")
-        server.wait_for_termination()
-
-
-class BatchDecoderTask(BatchTask, DecoderService):
-    def __init__(self):
-        pass
-
-    def __init__(self):
-        pass
-
-    def start_service(self):
-        server = grpc.server(futures.ThreadPoolExecutor(max_workers=40))
-        add_EncoderServiceServicer_to_server(self, server)
-        server.add_insecure_port(f"[::]:{self.port}")
-        server.start()
-        print("Decoder service running...")
+        print(f"{self.type} service is running...")
         server.wait_for_termination()
