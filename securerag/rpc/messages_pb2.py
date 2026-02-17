@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1csecurerag/rpc/messages.proto\"0\n\x11LocalSharedTensor\x12\x0c\n\x04\x62yte\x18\x01 \x01(\x0c\x12\r\n\x05shape\x18\x02 \x03(\x05\"\xb7\x01\n\x04\x44\x61ta\x12\r\n\x05index\x18\x01 \x01(\t\x12\x10\n\x08question\x18\x02 \x01(\t\x12\x0e\n\x06target\x18\x03 \x01(\t\x12\x10\n\x08passages\x18\x04 \x01(\t\x12\"\n\x06scores\x18\x05 \x01(\x0b\x32\x12.LocalSharedTensor\x12$\n\x08\x63ontexts\x18\x06 \x01(\x0b\x32\x12.LocalSharedTensor\x12\"\n\x06tokens\x18\x07 \x01(\x0b\x32\x12.LocalSharedTensor\"E\n\x04Task\x12\x10\n\x08\x65nv_type\x18\x01 \x01(\t\x12\x14\n\x05input\x18\x02 \x01(\x0b\x32\x05.Data\x12\x15\n\x06output\x18\x03 \x01(\x0b\x32\x05.Data\"\x1f\n\x07Request\x12\x14\n\x05tasks\x18\x01 \x03(\x0b\x32\x05.Task\" \n\x08Response\x12\x14\n\x05tasks\x18\x02 \x03(\x0b\x32\x05.Task2@\n\x0e\x45ncoderService\x12.\n\x17\x45xecuteBatchEncoderTask\x12\x08.Request\x1a\t.Response2@\n\x0e\x44\x65\x63oderService\x12.\n\x17\x45xecuteBatchDecoderTask\x12\x08.Request\x1a\t.Responseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1csecurerag/rpc/messages.proto\"?\n\x11LocalSharedTensor\x12\x0c\n\x04\x62yte\x18\x01 \x01(\x0c\x12\r\n\x05shape\x18\x02 \x03(\x05\x12\r\n\x05\x64type\x18\x03 \x01(\t\"\xe2\x01\n\x04\x44\x61ta\x12\r\n\x05index\x18\x01 \x01(\t\x12\x10\n\x08question\x18\x02 \x01(\t\x12\x0e\n\x06target\x18\x03 \x01(\t\x12\x10\n\x08passages\x18\x04 \x01(\t\x12\"\n\x06scores\x18\x05 \x01(\x0b\x32\x12.LocalSharedTensor\x12$\n\x08\x63ontexts\x18\x06 \x01(\x0b\x32\x12.LocalSharedTensor\x12)\n\rcontext_masks\x18\x07 \x01(\x0b\x32\x12.LocalSharedTensor\x12\"\n\x06tokens\x18\x08 \x01(\x0b\x32\x12.LocalSharedTensor\"E\n\x04Task\x12\x10\n\x08\x65nv_type\x18\x01 \x01(\t\x12\x14\n\x05input\x18\x02 \x01(\x0b\x32\x05.Data\x12\x15\n\x06output\x18\x03 \x01(\x0b\x32\x05.Data\"\x1f\n\x07Request\x12\x14\n\x05tasks\x18\x01 \x03(\x0b\x32\x05.Task\" \n\x08Response\x12\x14\n\x05tasks\x18\x02 \x03(\x0b\x32\x05.Task2@\n\x0e\x45ncoderService\x12.\n\x17\x45xecuteBatchEncoderTask\x12\x08.Request\x1a\t.Response2@\n\x0e\x44\x65\x63oderService\x12.\n\x17\x45xecuteBatchDecoderTask\x12\x08.Request\x1a\t.Responseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,17 +32,17 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'securerag.rpc.messages_pb2'
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_LOCALSHAREDTENSOR']._serialized_start=32
-  _globals['_LOCALSHAREDTENSOR']._serialized_end=80
-  _globals['_DATA']._serialized_start=83
-  _globals['_DATA']._serialized_end=266
-  _globals['_TASK']._serialized_start=268
-  _globals['_TASK']._serialized_end=337
-  _globals['_REQUEST']._serialized_start=339
-  _globals['_REQUEST']._serialized_end=370
-  _globals['_RESPONSE']._serialized_start=372
-  _globals['_RESPONSE']._serialized_end=404
-  _globals['_ENCODERSERVICE']._serialized_start=406
-  _globals['_ENCODERSERVICE']._serialized_end=470
-  _globals['_DECODERSERVICE']._serialized_start=472
-  _globals['_DECODERSERVICE']._serialized_end=536
+  _globals['_LOCALSHAREDTENSOR']._serialized_end=95
+  _globals['_DATA']._serialized_start=98
+  _globals['_DATA']._serialized_end=324
+  _globals['_TASK']._serialized_start=326
+  _globals['_TASK']._serialized_end=395
+  _globals['_REQUEST']._serialized_start=397
+  _globals['_REQUEST']._serialized_end=428
+  _globals['_RESPONSE']._serialized_start=430
+  _globals['_RESPONSE']._serialized_end=462
+  _globals['_ENCODERSERVICE']._serialized_start=464
+  _globals['_ENCODERSERVICE']._serialized_end=528
+  _globals['_DECODERSERVICE']._serialized_start=530
+  _globals['_DECODERSERVICE']._serialized_end=594
 # @@protoc_insertion_point(module_scope)

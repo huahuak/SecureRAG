@@ -11,6 +11,7 @@ service DecoderService {
 message LocalSharedTensor {
   bytes byte = 1;
   repeated int32 shape = 2;
+  string dtype = 3;
 }
 
 message Data {
@@ -20,7 +21,8 @@ message Data {
   string passages = 4;
   LocalSharedTensor scores = 5;
   LocalSharedTensor contexts = 6;
-  LocalSharedTensor tokens = 7;
+  LocalSharedTensor context_masks = 7;
+  LocalSharedTensor tokens = 8;
 };
 
 message Task {
