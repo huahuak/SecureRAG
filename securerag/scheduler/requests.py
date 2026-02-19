@@ -23,7 +23,7 @@ class RequestSource:
 
 class LocalRequestSource(RequestSource):
     def __init__(self):
-        random.seed(2025)
+        random.seed(2026)
 
         self.dataset = None
         self.curr = 0

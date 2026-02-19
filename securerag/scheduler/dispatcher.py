@@ -48,13 +48,12 @@ class Dispatcher:
         while self.finished_size < self.load_size:
             # disaggregate request
             reqs = self.request_source.arrive_requests()
-            print("endpoint-loop")
             for req in reqs:
                 pub, pri = Task.create_task_from_request(req)
                 if pub is not None:
-                    self.tee_encoder_task_queue.append(pub)
+                    self.gpu_encoder_task_queue.append(pub)
                 if pri is not None:
-                    self.gpu_encoder_task_queue.append(pri)
+                    self.tee_encoder_task_queue.append(pri)
             next(tee_event)
             next(gpu_event)
             # status check
@@ -62,11 +61,10 @@ class Dispatcher:
                 result = batch.post_process()
                 if result is None:
                     continue
+                self.rpc_execute_batch_task_queue.remove(batch)
                 if type(batch) is BatchEncoderTask:
                     tasks = result
                     for task in tasks:
-                        if task.dep is not None and task.dep.resolve() is False:
-                            continue
                         task = Task.create_decoder_task(task)
                         if task.env_type == "TEE":
                             self.tee_decoder_task_queue.append(task)
@@ -88,14 +86,13 @@ class Dispatcher:
         decoder_stub = messages_pb2_grpc.DecoderServiceStub(channel)
 
         def do_tee_loop():
-            print("tee-loop")
             # disaggregate iteration
             encoder_task_waiting_time = self.tee_encoder_task_queue.total_waiting_time()
             decoder_task_waiting_time = self.tee_decoder_task_queue.total_waiting_time()
 
             if encoder_task_waiting_time >= decoder_task_waiting_time:
                 # schedule request priority
-                tasks = self.tee_encoder_task_queue.pop_shortest_tasks(
+                tasks = self.tee_encoder_task_queue.pop_earliest_tasks(
                     self.tee_encoder_batch_size
                 )
                 if len(tasks) == 0:
@@ -105,8 +102,8 @@ class Dispatcher:
                 self.rpc_execute_batch_task_queue.append(batch)
             else:
                 # schedule request priority
-                tasks = self.tee_decoder_task_queue.pop_shortest_tasks(
-                    self.tee_decoder_batch_size
+                tasks = self.tee_decoder_task_queue.pop_earliest_tasks(
+                    self.tee_decoder_batch_size, need_dependency=True
                 )
                 if len(tasks) == 0:
                     return
@@ -131,14 +128,13 @@ class Dispatcher:
         decoder_stub = messages_pb2_grpc.DecoderServiceStub(channel)
 
         def do_gpu_loop():
-            print("gpu-loop")
             # disaggregate iteration
             encoder_task_waiting_time = self.gpu_encoder_task_queue.total_waiting_time()
             decoder_task_waiting_time = self.gpu_decoder_task_queue.total_waiting_time()
 
             if encoder_task_waiting_time >= decoder_task_waiting_time:
                 # schedule request priority
-                tasks = self.gpu_encoder_task_queue.pop_shortest_tasks(
+                tasks = self.gpu_encoder_task_queue.pop_earliest_tasks(
                     self.gpu_encoder_batch_size
                 )
                 if len(tasks) == 0:
@@ -148,8 +144,8 @@ class Dispatcher:
                 self.rpc_execute_batch_task_queue.append(batch)
             else:
                 # schedule request priority
-                tasks = self.gpu_decoder_task_queue.pop_shortest_tasks(
-                    self.gpu_decoder_batch_size
+                tasks = self.gpu_decoder_task_queue.pop_earliest_tasks(
+                    self.gpu_decoder_batch_size, need_dependency=True
                 )
                 if len(tasks) == 0:
                     return

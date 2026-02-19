@@ -23,6 +23,7 @@ message Data {
   LocalSharedTensor contexts = 6;
   LocalSharedTensor context_masks = 7;
   LocalSharedTensor tokens = 8;
+  string text_ans = 9;
 };
 
 message Task {

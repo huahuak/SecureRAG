@@ -31,7 +31,7 @@ class TestUnit(TestConfigLoggerBase):
         service.start_service()
 
     def test_dispatcher_rpc_client(self):
-        self.config.load_size = 2
+        self.config.load_size = 10
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         local_request = LocalRequestSource()
         local_request.registry_source(path, self.config)

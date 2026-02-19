@@ -30,9 +30,9 @@ def redirectPrintToLogger():
 
         def write(self, message):
             message = message.strip()
-            # if message:  # 过滤空行
+            if message:  # 过滤空行
+                self.logger.log(self.level, f"{message}", stacklevel=2)
             # self.logger.log(self.level, f"{message}", stacklevel=2)
-            self.logger.log(self.level, f"{message}", stacklevel=2)
 
         def flush(self):
             pass

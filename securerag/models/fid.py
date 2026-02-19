@@ -650,6 +650,7 @@ class FiDT5(transformers.T5ForConditionalGeneration):
         use_cache: Optional[bool] = None,
         **model_kwargs,
     ) -> torch.LongTensor:
+        self.tmp_scores = []
         r"""
         Generates sequences for models with a language modeling head. The method currently supports greedy decoding,
         beam-search decoding, sampling with temperature, sampling with top-k or nucleus sampling.

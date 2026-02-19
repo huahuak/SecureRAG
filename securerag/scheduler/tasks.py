@@ -1,5 +1,6 @@
 import json
 import time
+from collections import defaultdict
 from concurrent import futures
 from typing import List, overload
 
@@ -9,6 +10,7 @@ import torch
 import transformers
 from pyexpat.errors import messages
 from torch.nn.functional import pad
+from transformers.file_utils import ModelOutput
 
 from securerag.config import Config
 from securerag.data import BatchData, tokenizer_encode_batch
@@ -68,7 +70,7 @@ class Task:
         if len(private_data["passages"]) != 0:
             private_task = Task()
             private_task.request = req
-            public_task.env_type = "TEE"
+            private_task.env_type = "TEE"
             private_task.input = private_data
 
         if public_task and private_task:
@@ -80,14 +82,30 @@ class Task:
         task = Task()
         task.request = pre_task.request
         task.env_type = pre_task.env_type
+        # extract input
+        question = pre_task.input["question"]
+        scores = pre_task.input["scores"]
+        # extract output
+        contexts = pre_task.output["contexts"]
+        contexts = contexts.contiguous().view(
+            contexts.size(0) * contexts.size(1), contexts.size(2)
+        )
+        masks = pre_task.output["context_masks"]
+        masks = masks.contiguous().view(masks.size(0) * masks.size(1))
         task.input = {
-            # extract input
-            "scores": pre_task.input["scores"],
-            # extract output
-            "contexts": pre_task.output["contexts"],
-            "context_masks": pre_task.output["context_masks"],
+            "question": question,
+            "scores": scores,
+            "contexts": contexts,
+            "context_masks": masks,
         }
         return task
+
+    def check_non_none(v):
+        if v is None:
+            return False
+        if isinstance(v, str) and len(v) == 0:
+            return False
+        return True
 
     def to_rpc_task(self):
         input = self.input
@@ -107,25 +125,24 @@ class Task:
         rpc_input = None
         if input is not None:
             rpc_input = messages_pb2.Data(
-                question=input["question"] if "question" in input else None,
-                passages=json.dumps(input["passages"]) if "passages" in input else None,
-                scores=tensor(input["scores"]) if "scores" in input else None,
-                contexts=tensor(input["contexts"]) if "contexts" in input else None,
-                context_masks=(
-                    tensor(input["context_masks"]) if "context_masks" in input else None
+                question=input.get("question"),
+                passages=(
+                    json.dumps(input["passages"])
+                    if Task.check_non_none(input.get("passages"))
+                    else None
                 ),
-                tokens=tensor(input["tokens"]) if "tokens" in input else None,
+                scores=tensor(input.get("scores")),
+                contexts=tensor(input.get("contexts")),
+                context_masks=tensor(input.get("context_masks")),
+                tokens=tensor(input.get("tokens")),
             )
         rpc_output = None
         if output is not None:
             rpc_output = messages_pb2.Data(
-                contexts=tensor(output["contexts"]) if "contexts" in output else None,
-                context_masks=(
-                    tensor(output["context_masks"])
-                    if "context_masks" in output
-                    else None
-                ),
-                tokens=tensor(output["tokens"]) if "tokens" in output else None,
+                contexts=tensor(output.get("contexts")),
+                context_masks=tensor(output.get("context_masks")),
+                tokens=tensor(output.get("tokens")),
+                text_ans=output.get("text_ans"),
             )
         rpc_task = messages_pb2.Task(input=rpc_input, output=rpc_output)
         return rpc_task
@@ -143,8 +160,12 @@ class Task:
 
         if input is not None:
             task.input = {
-                "question": input.question if input.question else None,
-                "passages": json.loads(input.passages) if input.passages else None,
+                "question": input.question,
+                "passages": (
+                    json.loads(input.passages)
+                    if Task.check_non_none(input.passages)
+                    else None
+                ),
                 "scores": tensor(input.scores),
                 "contexts": tensor(input.contexts),
                 "context_masks": tensor(input.context_masks),
@@ -155,6 +176,7 @@ class Task:
                 "contexts": tensor(output.contexts),
                 "context_masks": tensor(output.context_masks),
                 "tokens": tensor(output.tokens),
+                "text_ans": output.text_ans,
             }
         return task
 
@@ -167,23 +189,30 @@ class TaskQueue(List[Task]):
             total += now - task.request.arrive_time
         return total
 
-    def pop_shortest_tasks(self, size):
+    def pop_earliest_tasks(self, size, need_dependency=False):
         out = []
-        while len(out) < size and len(self) > 0:
-            idx, _ = min(enumerate(self), key=lambda x: x[1].request.arrive_time)
-            task = self.pop(idx)
-            out.append(task)
+        tasks = self
+        if need_dependency:
+            tasks[:] = [x for x in tasks if x.dep is None or x.dep.resolve()]
+        while len(out) < size and len(tasks) > 0:
+            x = min(tasks, key=lambda x: x.request.arrive_time)
+            self.remove(x)
+            out.append(x)
         return out
 
 
 class BatchTask:
 
     def __init__(self):
+        self.tasks = []
         self.future: grpc.Future = None
 
     def add_tasks(self, tasks):
-        self.tasks = tasks
+        self.tasks += tasks
         return self
+
+    def get_env_type(self):
+        return self.tasks[0].env_type
 
     def passage_per_task(self):
         return [len(task.input["passages"]) for task in self.tasks]
@@ -197,7 +226,7 @@ class BatchTask:
 
 class BatchEncoderTask(BatchTask):
     def rpc_execute(self, stub: EncoderServiceStub):
-        print("encoder batch task send rpc_execute...")
+        print(f"rpc_execute({self.get_env_type()}, Encoder)")
         rpc_tasks = []
         for task in self.tasks:
             rpc_tasks.append(task.to_rpc_task())
@@ -217,15 +246,27 @@ class BatchEncoderTask(BatchTask):
 
 
 class BatchDecoderTask(BatchTask):
-
     def rpc_execute(self, stub: DecoderServiceStub):
-        print("decoder batch task send rpc_execute...")
+        print(f"rpc_execute({self.get_env_type()}, Decoder)")
         rpc_tasks = []
         for task in self.tasks:
             rpc_tasks.append(task.to_rpc_task())
         request = messages_pb2.Request(tasks=rpc_tasks)
         self.future = stub.ExecuteBatchDecoderTask.future(request)
         self.future.result()
+
+    def post_process(self):
+        if not self.future.done():
+            return
+        response = self.future.result()
+        ret_tasks = [Task.from_rpc_task(rpc_task) for rpc_task in response.tasks]
+        for task, ret in zip(self.tasks, ret_tasks):
+            task.output = ret.output
+            print(
+                f"question: {task.input.get('question')}, answer: {task.output.get('text_ans')}"
+            )
+            task.is_finished = True
+        return self.tasks
 
 
 class EncoderDecoderSerivce(EncoderService, DecoderService):
@@ -259,6 +300,8 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
             self.device = "cuda"
         self.model = model.to(self.device)
 
+        self.runtime_status = defaultdict(int)
+
     def passage_per_task(self, batch_input):
         return [len(data["passages"]) for data in batch_input]
 
@@ -291,6 +334,9 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
         )
 
     def ExecuteBatchEncoderTask(self, request, context):
+        self.runtime_status["ExecuteBatchEncoderTask"] += 1
+        print(f"{self.type} runtime status: {self.runtime_status}")
+
         tasks = request.tasks
         batch_input = [Task.from_rpc_task(task).input for task in tasks]
         batch = self._tokenizer(batch_input)
@@ -306,7 +352,7 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
             attention_mask=context_masks.to(self.device),
             return_dict=True,
         )
-        encoder_contexts = output["last_hidden_state"]
+        encoder_contexts = output["last_hidden_state"].to("cpu")
         passages_dim = self.passage_per_task(batch_input)
         ret_tasks = []
         curr = 0
@@ -323,21 +369,46 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
         )
 
     def ExecuteBatchDecoderTask(self, request, context):
+        self.runtime_status["ExecuteBatchDecoderTask"] += 1
+        print(f"{self.type} runtime status: {self.runtime_status}")
+
         tasks = request.tasks
+        batch_size = len(tasks)
         batch_input = [Task.from_rpc_task(task).input for task in tasks]
         contexts = [input["contexts"] for input in batch_input]
         masks = [input["context_masks"] for input in batch_input]
         maxlen = max([context.size(0) for context in contexts])
-        contexts = torch.Stack(
-            [pad(x, (0, maxlen - x.size(0)), value=self.pad_token_id) for x in contexts]
+        contexts = torch.stack(
+            [
+                pad(x, (0, 0, 0, maxlen - x.size(0)), value=self.pad_token_id)
+                for x in contexts
+            ]
         )
-        masks = torch.Stack(
+        masks = torch.stack(
             [pad(x, (0, maxlen - x.size(0)), value=False) for x in masks]
         )
+        encoder_outputs = ModelOutput()
+        encoder_outputs["last_hidden_state"] = contexts.to(self.device)
         ans = self.model.generate_without_encoder(
-            encoder_outputs=contexts, attention_mask=masks
+            input_ids=torch.empty(batch_size, 1).to(self.device),  # useless input_ids
+            encoder_outputs=encoder_outputs,
+            attention_mask=masks.to(self.device),
         )
-        print(ans.shape)
+        ans = ans.to("cpu")
+        batch_text_ans = self.tokenizer.batch_decode(ans, skip_special_tokens=True)
+        print(batch_text_ans)
+        ret_tasks = []
+        for idx, tokens in enumerate(ans):
+            text_ans = batch_text_ans[idx]
+            tmp = Task()
+            tmp.output = {
+                "tokens": tokens,
+                "text_ans": text_ans,
+            }
+            ret_tasks.append(tmp)
+        return messages_pb2.Response(
+            tasks=[Task.to_rpc_task(ret_task) for ret_task in ret_tasks]
+        )
 
     def start_service(self, worker_num=1):
         server = grpc.server(
@@ -353,6 +424,4 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
         server.add_insecure_port(f"[::]:{self.port}")
         server.start()
         print(f"{self.type} service is running...")
-        server.wait_for_termination()
-        server.wait_for_termination()
         server.wait_for_termination()
