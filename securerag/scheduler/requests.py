@@ -1,6 +1,5 @@
 import random
 import time
-from logging import info
 from typing import List
 
 from securerag import data
@@ -31,7 +30,7 @@ class LocalRequestSource(RequestSource):
         self.dataset = None
         self.curr = 0
         self.lasttime = time.time()
-        self.request_per_second = 512
+        self.request_per_second = 1.5
 
     def registry_source(self, path, config):
         datas = data.load(path=path, size=config.load_size)

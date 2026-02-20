@@ -8,12 +8,14 @@ import grpc
 import numpy as np
 import torch
 import transformers
+from google.protobuf import empty_pb2
 from pyexpat.errors import messages
 from torch.nn.functional import pad
 from transformers.file_utils import ModelOutput
 
 from securerag.config import Config
-from securerag.data import BatchData, tokenizer_encode_batch
+from securerag.data import BatchData, SecureRAG4T5Collator, tokenizer_encode_batch
+from securerag.models import SecureRAG
 from securerag.models.fid import FiDT5
 from securerag.profiler import Profiler
 from securerag.rpc import messages_pb2
@@ -22,12 +24,16 @@ from securerag.rpc.messages_pb2_grpc import (
     DecoderServiceStub,
     EncoderService,
     EncoderServiceStub,
+    GenerateService,
+    MetricService,
     add_DecoderServiceServicer_to_server,
     add_EncoderServiceServicer_to_server,
+    add_GenerateServiceServicer_to_server,
+    add_MetricServiceServicer_to_server,
 )
 from securerag.scheduler.dependency import FusionAggregate
 from securerag.scheduler.requests import Request
-from securerag.utils import show_metric
+from securerag.utils import add_metric, clear_metric, delete_metric, show_metric
 
 
 class Task:
@@ -38,6 +44,21 @@ class Task:
         self.output = None
         self.dep = None
         self.is_finished = False
+
+    def create_native_task_from_request(req: Request):
+        data = req.input_data
+        input_data = {
+            "index": data["index"],
+            "question": data["question"],
+            "target": data["target"],
+            "passages": data["passages"],
+            "scores": data["scores"],
+        }
+        task = Task()
+        task.request = req
+        task.env_type = "TEE"
+        task.input = input_data
+        return task
 
     @staticmethod
     def create_task_from_request(req: Request):
@@ -230,7 +251,6 @@ class BatchTask:
 
 class BatchEncoderTask(BatchTask):
 
-    @Profiler("rpc_execute_encoder")
     def rpc_execute(self, stub: EncoderServiceStub):
         print(f"rpc_execute({self.get_env_type()}, Encoder)")
         rpc_tasks = []
@@ -252,7 +272,6 @@ class BatchEncoderTask(BatchTask):
 
 class BatchDecoderTask(BatchTask):
 
-    @Profiler("rpc_execute_decoder")
     def rpc_execute(self, stub: DecoderServiceStub):
         print(f"rpc_execute({self.get_env_type()}, Decoder)")
         rpc_tasks = []
@@ -275,7 +294,42 @@ class BatchDecoderTask(BatchTask):
         return self.tasks
 
 
-class EncoderDecoderSerivce(EncoderService, DecoderService):
+class BatchGenerateTask(BatchTask):
+    def rpc_execute(self, stub, enable_offloading=True):
+        print(f"rpc_execute({self.get_env_type()}, Generate)")
+        rpc_tasks = []
+        for task in self.tasks:
+            rpc_tasks.append(task.to_rpc_task())
+        request = messages_pb2.Request(tasks=rpc_tasks)
+        if enable_offloading:
+            passage_size = len(self.tasks[0].input["passages"])
+            request.max_private_ratio = max(
+                [
+                    task.request.private_passage_size / passage_size
+                    for task in self.tasks
+                ]
+            )
+            self.future = stub.ExecuteBatchOffloadingGenerateTask.future(request)
+        else:
+            self.future = stub.ExecuteBatchGenerateTask.future(request)
+
+    def post_process(self):
+        if not self.future.done():
+            return
+        response = self.future.result()
+        ret_tasks = [Task.from_rpc_task(rpc_task) for rpc_task in response.tasks]
+        for task, ret in zip(self.tasks, ret_tasks):
+            task.output = ret.output
+            print(
+                f"question: {task.input.get('question')}, answer: {task.output.get('text_ans')}"
+            )
+            task.is_finished = True
+        return self.tasks
+
+
+class EncoderDecoderSerivce(
+    EncoderService, DecoderService, MetricService, GenerateService
+):
     def __init__(self, cfg, type):
         self.pad_token_id = 0
 
@@ -287,7 +341,6 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
         model_path = cfg.generator_model_path
         model: FiDT5 = FiDT5.from_pretrained(model_path)
         model = model.eval()
-        torch.no_grad()
         self.encoder = model.get_encoder().encoder
         self.decoder = model.get_decoder()
         self.tokenizer: transformers.T5Tokenizer = (
@@ -305,9 +358,20 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
         elif type == "GPU":
             self.port = gpu_port
             self.device = "cuda"
-        self.model = model.to(self.device)
+        elif type == "NATIVE":
+            self.port = 8082
+            self.device = "cpu"
+        self.model = self.model.to(self.device)
 
-        self.runtime_status = defaultdict(int)
+        if type == "OFFLAODING":
+            self.port = 8083
+            self.model: SecureRAG = SecureRAG(fid=self.model)
+            self.collator = SecureRAG4T5Collator(
+                tokenizer=self.tokenizer,
+                text_maxlength=self.text_maxlength,
+                answer_maxlength=self.answer_maxlength,
+                private_passage_ratio=0,  # dynamic in runtime
+            )
 
     def passage_per_task(self, batch_input):
         return [len(data["passages"]) for data in batch_input]
@@ -341,6 +405,7 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
         )
 
     @torch.inference_mode()
+    @Profiler("ExecuteBatchEncoderTask")
     def ExecuteBatchEncoderTask(self, request, context):
         tasks = request.tasks
         batch_input = [Task.from_rpc_task(task).input for task in tasks]
@@ -372,15 +437,15 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
             curr += dim
             ret_tasks.append(tmp)
 
+        add_metric("finished_encoder_task", 1)
         show_metric()
-        self.runtime_status["ExecuteBatchEncoderTask"] += 1
-        print(f"{self.type} runtime status: {self.runtime_status}")
 
         return messages_pb2.Response(
             tasks=[Task.to_rpc_task(ret_task) for ret_task in ret_tasks]
         )
 
     @torch.inference_mode()
+    @Profiler("ExecuteBatchDecoderTask")
     def ExecuteBatchDecoderTask(self, request, context):
         tasks = request.tasks
         batch_size = len(tasks)
@@ -421,13 +486,107 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
             }
             ret_tasks.append(tmp)
 
+        add_metric("finished_decoder_task", 1)
         show_metric()
-        self.runtime_status["ExecuteBatchDecoderTask"] += 1
-        print(f"{self.type} runtime status: {self.runtime_status}")
 
         return messages_pb2.Response(
             tasks=[Task.to_rpc_task(ret_task) for ret_task in ret_tasks]
         )
+
+    @torch.inference_mode()
+    @Profiler("ExecuteBatchOffloadingGenerateTask")
+    def ExecuteBatchOffloadingGenerateTask(self, request, context):
+        tasks = request.tasks
+        batch_input = [Task.from_rpc_task(task).input for task in tasks]
+        bsz = len(batch_input)
+        self.collator.private_passage_ratio = request.max_private_ratio
+        self.collator()
+        batch = self.collator(batch_input)
+        (
+            context_ids,
+            context_masks,  # bsz * docs * dim
+            private_context_ids,
+            private_context_masks,  # bsz * docs_p * dim
+            scores,  # bsz * docs
+            private_scores,
+        ) = (
+            batch.passage_ids,
+            batch.passage_masks,
+            batch.private_passage_ids,
+            batch.private_passage_masks,
+            batch.scores,
+            batch.private_scores,
+        )
+        output = self.model.generate(
+            context_ids=context_ids,
+            context_ids_private=private_context_ids,
+            attention_mask=context_masks,
+            attention_mask_private=private_context_masks,
+            doc_scores=scores,
+            doc_scores_private=private_scores,
+            max_length=self.answer_maxlength,
+        )
+        ans = self.tokenizer.batch_decode(output, skip_special_tokens=True)
+        print(ans)
+        ret_tasks = []
+        for idx, _ in enumerate(ans):
+            text_ans = ans[idx]
+            tmp = Task()
+            tmp.output = {
+                "text_ans": text_ans,
+            }
+            ret_tasks.append(tmp)
+
+        add_metric("finished_generate_task", 1)
+        show_metric()
+
+        return messages_pb2.Response(
+            tasks=[Task.to_rpc_task(ret_task) for ret_task in ret_tasks]
+        )
+
+    @torch.inference_mode()
+    @Profiler("ExecuteBatchGenerateTask")
+    def ExecuteBatchGenerateTask(self, request, context):
+        tasks = request.tasks
+        batch_input = [Task.from_rpc_task(task).input for task in tasks]
+        bsz = len(batch_input)
+        batch = self._tokenizer(batch_input)
+        (
+            context_ids,
+            context_masks,
+        ) = (
+            batch.passage_ids,
+            batch.passage_masks,
+        )
+        context_ids = context_ids.view(bsz, -1, context_ids.size(-1))
+        context_masks = context_masks.view(bsz, -1, context_masks.size(-1))
+        output = self.model.generate(
+            input_ids=context_ids.to(self.device),
+            attention_mask=context_masks.to(self.device),
+            max_length=self.answer_maxlength,
+        )
+        ans = self.tokenizer.batch_decode(output, skip_special_tokens=True)
+        print(ans)
+        ret_tasks = []
+        for idx, _ in enumerate(ans):
+            text_ans = ans[idx]
+            tmp = Task()
+            tmp.output = {
+                "text_ans": text_ans,
+            }
+            ret_tasks.append(tmp)
+
+        add_metric("finished_generate_task", 1)
+        show_metric()
+
+        return messages_pb2.Response(
+            tasks=[Task.to_rpc_task(ret_task) for ret_task in ret_tasks]
+        )
+
+    def ClearMetric(self, request, context):
+        print(f"{self.type} service: delete metric")
+        delete_metric()
+        return empty_pb2.Empty()
 
     def start_service(self, worker_num=1):
         server = grpc.server(
@@ -440,7 +599,10 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
         )
         add_EncoderServiceServicer_to_server(self, server)
         add_DecoderServiceServicer_to_server(self, server)
+        add_GenerateServiceServicer_to_server(self, server)
+        add_MetricServiceServicer_to_server(self, server)
         server.add_insecure_port(f"[::]:{self.port}")
         server.start()
         print(f"{self.type} service is running...")
+        server.wait_for_termination()
         server.wait_for_termination()

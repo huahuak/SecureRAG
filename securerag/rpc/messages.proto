@@ -10,6 +10,11 @@ service DecoderService {
   rpc ExecuteBatchDecoderTask(Request) returns (Response);
 }
 
+service GenerateService {
+  rpc ExecuteBatchGenerateTask(Request) returns (Response);
+  rpc ExecuteBatchOffloadingGenerateTask(Request) returns (Response);
+}
+
 service MetricService {
   rpc ClearMetric(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc DumpMetric(google.protobuf.Empty) returns (google.protobuf.Empty);
@@ -41,6 +46,7 @@ message Task {
 
 message Request {
   repeated Task tasks = 1;
+  float max_private_ratio = 2;
 }
 
 message Response {
