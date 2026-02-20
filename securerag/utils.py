@@ -79,7 +79,7 @@ def show_metric():
         )
         print("\n" + formatted)
 
-    map_print(metric_map)
+    # map_print(metric_map)
     map_print(
         {
             k + "(statics)": [np.mean(v), np.min(v), np.max(v), np.sum(v)]

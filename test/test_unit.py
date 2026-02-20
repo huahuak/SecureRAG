@@ -1,3 +1,4 @@
+import cProfile
 import time
 from test.test_base import TestConfigLoggerBase
 
@@ -31,7 +32,7 @@ class TestUnit(TestConfigLoggerBase):
         service.start_service()
 
     def test_dispatcher_rpc_client(self):
-        self.config.load_size = 10
+        self.config.load_size = 64
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         local_request = LocalRequestSource()
         local_request.registry_source(path, self.config)
@@ -41,7 +42,7 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher.endpoint_loop()
 
     def test_adaptive_passage_selection(self):
-        public_scores = torch.Tensor([60, 70]) / 100
+        public_scores = torch.Tensor([60]) / 100
         private_scores = torch.Tensor([80, 90, 85]) / 100
         ret = FusionAggregate.adaptive_passage_selection(
             public_scores, private_scores, 1

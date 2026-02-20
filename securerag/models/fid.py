@@ -1108,10 +1108,11 @@ class FiDT5(transformers.T5ForConditionalGeneration):
                     **model_kwargs,
                 )
 
-                torch.cuda.synchronize()
-                with profiler.Profiler("DECODER_TIMER", print_time=True):
+                is_cuda = True if self.device == "cuda" else False
+                with profiler.Profiler(
+                    "DECODER_TIMER", print_time=True, is_cuda=is_cuda
+                ):
                     outputs = self(**model_inputs, return_dict=True)
-                    torch.cuda.synchronize()
                 next_token_logits = outputs.logits[:, -1, :]
 
                 scores = self.postprocess_next_token_scores(

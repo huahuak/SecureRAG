@@ -1,4 +1,4 @@
-import threading
+import time
 from concurrent.futures import thread
 
 import grpc
@@ -11,6 +11,7 @@ from securerag.scheduler.tasks import (
     Task,
     TaskQueue,
 )
+from securerag.utils import add_metric, get_metric, show_metric
 
 
 class Dispatcher:
@@ -30,10 +31,13 @@ class Dispatcher:
 
         self.running = True
 
-        self.tee_encoder_batch_size = 2
-        self.tee_decoder_batch_size = 2
-        self.gpu_encoder_batch_size = 16
-        self.gpu_decoder_batch_size = 16
+        self.tee_encoder_batch_size = 8
+        self.tee_decoder_batch_size = 8
+        self.gpu_encoder_batch_size = 64
+        self.gpu_decoder_batch_size = 64
+
+        self.tee_credit = 1
+        self.gpu_credit = 1
 
     def registry_request_source(self, source: RequestSource):
         self.request_source = source
@@ -48,19 +52,26 @@ class Dispatcher:
         while self.finished_size < self.load_size:
             # disaggregate request
             reqs = self.request_source.arrive_requests()
+            if len(reqs) > 0:
+                add_metric("arrived_request_size", len(reqs))
             for req in reqs:
                 pub, pri = Task.create_task_from_request(req)
                 if pub is not None:
                     self.gpu_encoder_task_queue.append(pub)
                 if pri is not None:
                     self.tee_encoder_task_queue.append(pri)
+            # submit batch task
             next(tee_event)
             next(gpu_event)
-            # status check
+            # collect result and check status
             for batch in self.rpc_execute_batch_task_queue:
                 result = batch.post_process()
                 if result is None:
                     continue
+                if batch.get_env_type() == "TEE":
+                    self.tee_credit += 1
+                elif batch.get_env_type() == "GPU":
+                    self.gpu_credit += 1
                 self.rpc_execute_batch_task_queue.remove(batch)
                 if type(batch) is BatchEncoderTask:
                     tasks = result
@@ -71,7 +82,20 @@ class Dispatcher:
                         elif task.env_type == "GPU":
                             self.gpu_decoder_task_queue.append(task)
                 elif type(batch) is BatchDecoderTask:
-                    pass
+                    tasks = result
+                    for task in tasks:
+                        arrive_time = task.request.arrive_time
+                        finish_time = task.request.finish_time = time.time()
+                        if task.env_type == "GPU":
+                            add_metric("LATENCY_GPU", finish_time - arrive_time)
+                            add_metric("finished_request_gpu", 1)
+                        elif task.env_type == "TEE":
+                            add_metric("LATENCY_TEE", finish_time - arrive_time)
+                            add_metric("finished_request_tee", 1)
+                show_metric()
+                print(
+                    f"te: {len(self.tee_encoder_task_queue)}, td: {len(self.tee_decoder_task_queue)}, ge: {len(self.gpu_encoder_task_queue)}, gd: {len(self.gpu_decoder_task_queue)}, rpc: {len(self.rpc_execute_batch_task_queue)}"
+                )
 
     def tee_loop(self):
         port = self.tee_service_port
@@ -90,7 +114,12 @@ class Dispatcher:
             encoder_task_waiting_time = self.tee_encoder_task_queue.total_waiting_time()
             decoder_task_waiting_time = self.tee_decoder_task_queue.total_waiting_time()
 
-            if encoder_task_waiting_time >= decoder_task_waiting_time:
+            if self.tee_credit <= 0:
+                return
+            self.tee_credit -= 1
+
+            # if encoder_task_waiting_time >= decoder_task_waiting_time:
+            if decoder_task_waiting_time == 0:
                 # schedule request priority
                 tasks = self.tee_encoder_task_queue.pop_earliest_tasks(
                     self.tee_encoder_batch_size
@@ -132,7 +161,12 @@ class Dispatcher:
             encoder_task_waiting_time = self.gpu_encoder_task_queue.total_waiting_time()
             decoder_task_waiting_time = self.gpu_decoder_task_queue.total_waiting_time()
 
-            if encoder_task_waiting_time >= decoder_task_waiting_time:
+            if self.gpu_credit <= 0:
+                return
+            self.gpu_credit -= 1
+
+            # if encoder_task_waiting_time >= decoder_task_waiting_time:
+            if decoder_task_waiting_time == 0:
                 # schedule request priority
                 tasks = self.gpu_encoder_task_queue.pop_earliest_tasks(
                     self.gpu_encoder_batch_size

@@ -14,6 +14,9 @@ class Request:
         self.token_between_time = []
         self.input_data = None
         self.private_passage_size = 0
+        self.private_ans = None
+        self.public_ans = None
+        self.final_ans = None
 
 
 class RequestSource:
@@ -28,7 +31,7 @@ class LocalRequestSource(RequestSource):
         self.dataset = None
         self.curr = 0
         self.lasttime = time.time()
-        self.request_per_second = 1
+        self.request_per_second = 512
 
     def registry_source(self, path, config):
         datas = data.load(path=path, size=config.load_size)
@@ -36,10 +39,11 @@ class LocalRequestSource(RequestSource):
 
     def arrive_requests(self) -> List[Request]:
         now = time.time()
-        interval = int(now - self.lasttime)
-        self.lasttime = time.time()
+        interval = now - self.lasttime
 
-        request_size = interval * self.request_per_second
+        request_size = int(interval * self.request_per_second)
+        if request_size > 0:
+            self.lasttime = time.time()
         data_size = len(self.dataset)
 
         # info(f"now: {now}, interval: {interval}, request_size: {request_size}.")

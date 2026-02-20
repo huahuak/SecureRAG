@@ -15,6 +15,7 @@ from transformers.file_utils import ModelOutput
 from securerag.config import Config
 from securerag.data import BatchData, tokenizer_encode_batch
 from securerag.models.fid import FiDT5
+from securerag.profiler import Profiler
 from securerag.rpc import messages_pb2
 from securerag.rpc.messages_pb2_grpc import (
     DecoderService,
@@ -26,6 +27,7 @@ from securerag.rpc.messages_pb2_grpc import (
 )
 from securerag.scheduler.dependency import FusionAggregate
 from securerag.scheduler.requests import Request
+from securerag.utils import show_metric
 
 
 class Task:
@@ -107,6 +109,7 @@ class Task:
             return False
         return True
 
+    # @Profiler("to_rpc_task")
     def to_rpc_task(self):
         input = self.input
         output = self.output
@@ -147,6 +150,7 @@ class Task:
         rpc_task = messages_pb2.Task(input=rpc_input, output=rpc_output)
         return rpc_task
 
+    # @Profiler("from_rpc_task")
     def from_rpc_task(rpc_task: messages_pb2.Task):
         task = Task()
         input = rpc_task.input
@@ -225,6 +229,8 @@ class BatchTask:
 
 
 class BatchEncoderTask(BatchTask):
+
+    @Profiler("rpc_execute_encoder")
     def rpc_execute(self, stub: EncoderServiceStub):
         print(f"rpc_execute({self.get_env_type()}, Encoder)")
         rpc_tasks = []
@@ -232,7 +238,6 @@ class BatchEncoderTask(BatchTask):
             rpc_tasks.append(task.to_rpc_task())
         request = messages_pb2.Request(tasks=rpc_tasks)
         self.future = stub.ExecuteBatchEncoderTask.future(request)
-        self.future.result()
 
     def post_process(self):
         if not self.future.done():
@@ -246,6 +251,8 @@ class BatchEncoderTask(BatchTask):
 
 
 class BatchDecoderTask(BatchTask):
+
+    @Profiler("rpc_execute_decoder")
     def rpc_execute(self, stub: DecoderServiceStub):
         print(f"rpc_execute({self.get_env_type()}, Decoder)")
         rpc_tasks = []
@@ -253,7 +260,6 @@ class BatchDecoderTask(BatchTask):
             rpc_tasks.append(task.to_rpc_task())
         request = messages_pb2.Request(tasks=rpc_tasks)
         self.future = stub.ExecuteBatchDecoderTask.future(request)
-        self.future.result()
 
     def post_process(self):
         if not self.future.done():
@@ -281,6 +287,7 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
         model_path = cfg.generator_model_path
         model: FiDT5 = FiDT5.from_pretrained(model_path)
         model = model.eval()
+        torch.no_grad()
         self.encoder = model.get_encoder().encoder
         self.decoder = model.get_decoder()
         self.tokenizer: transformers.T5Tokenizer = (
@@ -333,10 +340,8 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
             passage_masks=passage_masks,
         )
 
+    @torch.inference_mode()
     def ExecuteBatchEncoderTask(self, request, context):
-        self.runtime_status["ExecuteBatchEncoderTask"] += 1
-        print(f"{self.type} runtime status: {self.runtime_status}")
-
         tasks = request.tasks
         batch_input = [Task.from_rpc_task(task).input for task in tasks]
         batch = self._tokenizer(batch_input)
@@ -347,11 +352,13 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
             batch.passage_ids,
             batch.passage_masks,
         )
-        output = self.encoder(
-            input_ids=context_ids.to(self.device),
-            attention_mask=context_masks.to(self.device),
-            return_dict=True,
-        )
+        is_cuda = True if self.type == "GPU" else False
+        with Profiler(f"{self.type}_ENCODER", is_cuda=is_cuda):
+            output = self.encoder(
+                input_ids=context_ids.to(self.device),
+                attention_mask=context_masks.to(self.device),
+                return_dict=True,
+            )
         encoder_contexts = output["last_hidden_state"].to("cpu")
         passages_dim = self.passage_per_task(batch_input)
         ret_tasks = []
@@ -364,14 +371,17 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
             }
             curr += dim
             ret_tasks.append(tmp)
+
+        show_metric()
+        self.runtime_status["ExecuteBatchEncoderTask"] += 1
+        print(f"{self.type} runtime status: {self.runtime_status}")
+
         return messages_pb2.Response(
             tasks=[Task.to_rpc_task(ret_task) for ret_task in ret_tasks]
         )
 
+    @torch.inference_mode()
     def ExecuteBatchDecoderTask(self, request, context):
-        self.runtime_status["ExecuteBatchDecoderTask"] += 1
-        print(f"{self.type} runtime status: {self.runtime_status}")
-
         tasks = request.tasks
         batch_size = len(tasks)
         batch_input = [Task.from_rpc_task(task).input for task in tasks]
@@ -389,11 +399,15 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
         )
         encoder_outputs = ModelOutput()
         encoder_outputs["last_hidden_state"] = contexts.to(self.device)
-        ans = self.model.generate_without_encoder(
-            input_ids=torch.empty(batch_size, 1).to(self.device),  # useless input_ids
-            encoder_outputs=encoder_outputs,
-            attention_mask=masks.to(self.device),
-        )
+        is_cuda = True if self.type == "GPU" else False
+        with Profiler(f"{self.type}_DECODER", is_cuda=is_cuda):
+            ans = self.model.generate_without_encoder(
+                input_ids=torch.empty(batch_size, 1).to(
+                    self.device
+                ),  # useless input_ids
+                encoder_outputs=encoder_outputs,
+                attention_mask=masks.to(self.device),
+            )
         ans = ans.to("cpu")
         batch_text_ans = self.tokenizer.batch_decode(ans, skip_special_tokens=True)
         print(batch_text_ans)
@@ -406,6 +420,11 @@ class EncoderDecoderSerivce(EncoderService, DecoderService):
                 "text_ans": text_ans,
             }
             ret_tasks.append(tmp)
+
+        show_metric()
+        self.runtime_status["ExecuteBatchDecoderTask"] += 1
+        print(f"{self.type} runtime status: {self.runtime_status}")
+
         return messages_pb2.Response(
             tasks=[Task.to_rpc_task(ret_task) for ret_task in ret_tasks]
         )

@@ -1,11 +1,18 @@
 syntax = "proto3";
 
+import "google/protobuf/empty.proto";
+
 service EncoderService {
   rpc ExecuteBatchEncoderTask(Request) returns (Response);
 }
 
 service DecoderService {
   rpc ExecuteBatchDecoderTask(Request) returns (Response);
+}
+
+service MetricService {
+  rpc ClearMetric(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc DumpMetric(google.protobuf.Empty) returns (google.protobuf.Empty);
 }
 
 message LocalSharedTensor {
