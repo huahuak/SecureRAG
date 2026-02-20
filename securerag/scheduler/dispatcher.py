@@ -33,8 +33,8 @@ class Dispatcher:
 
         self.running = True
 
-        self.tee_encoder_batch_size = 4
-        self.tee_decoder_batch_size = 4
+        self.tee_encoder_batch_size = 1
+        self.tee_decoder_batch_size = 1
         self.gpu_encoder_batch_size = 32
         self.gpu_decoder_batch_size = 32
 
@@ -66,7 +66,7 @@ class Dispatcher:
             for task in batch:
                 task_queue.remove(task)
             if len(batch) == 0:
-                return
+                continue
             batch_task = BatchGenerateTask().add_tasks(batch)
             batch_task.rpc_execute(stub, enable_offloading)
             batch_task.future.result()

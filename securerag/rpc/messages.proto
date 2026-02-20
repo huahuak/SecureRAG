@@ -27,7 +27,7 @@ message LocalSharedTensor {
 }
 
 message Data {
-  string index = 1;
+  int32 index = 1;
   string question = 2;
   string target = 3;
   string passages = 4;

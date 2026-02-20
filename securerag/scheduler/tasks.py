@@ -49,6 +49,7 @@ class Task:
         data = req.input_data
         input_data = {
             "index": data["index"],
+            "target": data["target"],
             "question": data["question"],
             "target": data["target"],
             "passages": data["passages"],
@@ -149,6 +150,8 @@ class Task:
         rpc_input = None
         if input is not None:
             rpc_input = messages_pb2.Data(
+                index=input.get("index"),
+                target=input.get("target"),
                 question=input.get("question"),
                 passages=(
                     json.dumps(input["passages"])
@@ -185,6 +188,8 @@ class Task:
 
         if input is not None:
             task.input = {
+                "index": input.index,
+                "target": input.target,
                 "question": input.question,
                 "passages": (
                     json.loads(input.passages)
@@ -309,6 +314,7 @@ class BatchGenerateTask(BatchTask):
                     for task in self.tasks
                 ]
             )
+            print(f"request.max_private_ratio: {request.max_private_ratio}")
             self.future = stub.ExecuteBatchOffloadingGenerateTask.future(request)
         else:
             self.future = stub.ExecuteBatchGenerateTask.future(request)
@@ -361,11 +367,11 @@ class EncoderDecoderSerivce(
         elif type == "NATIVE":
             self.port = 8082
             self.device = "cpu"
-        self.model = self.model.to(self.device)
+        self.model = model.to(self.device)
 
         if type == "OFFLAODING":
             self.port = 8083
-            self.model: SecureRAG = SecureRAG(fid=self.model)
+            self.model: SecureRAG = SecureRAG(fidt5=self.model)
             self.collator = SecureRAG4T5Collator(
                 tokenizer=self.tokenizer,
                 text_maxlength=self.text_maxlength,
@@ -500,7 +506,6 @@ class EncoderDecoderSerivce(
         batch_input = [Task.from_rpc_task(task).input for task in tasks]
         bsz = len(batch_input)
         self.collator.private_passage_ratio = request.max_private_ratio
-        self.collator()
         batch = self.collator(batch_input)
         (
             context_ids,
@@ -516,6 +521,14 @@ class EncoderDecoderSerivce(
             batch.private_passage_masks,
             batch.scores,
             batch.private_scores,
+        )
+        context_ids = context_ids.view(bsz, -1, context_ids.size(-1))
+        context_masks = context_masks.view(bsz, -1, context_masks.size(-1))
+        private_context_ids = private_context_ids.view(
+            bsz, -1, private_context_ids.size(-1)
+        )
+        private_context_masks = private_context_masks.view(
+            bsz, -1, private_context_masks.size(-1)
         )
         output = self.model.generate(
             context_ids=context_ids,
