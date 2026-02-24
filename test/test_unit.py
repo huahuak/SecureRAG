@@ -10,7 +10,11 @@ from securerag.rpc import messages_pb2_grpc
 from securerag.scheduler.dependency import FusionAggregate
 from securerag.scheduler.dispatcher import Dispatcher
 from securerag.scheduler.requests import LocalRequestSource
-from securerag.scheduler.tasks import BatchEncoderTask, EncoderDecoderSerivce
+from securerag.scheduler.tasks import (
+    BatchEncoderTask,
+    EncoderDecoderSerivce,
+    LocalEncoderDecoderService,
+)
 
 
 class TestUnit(TestConfigLoggerBase):
@@ -72,11 +76,8 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher.registry_request_source(local_request)
         dispatcher.native_endpoint_loop(enable_offloading=False)
 
-    def test_dispatcher_rpc_client(self):
-        for port in [8080, 8081]:
-            with grpc.insecure_channel(f"localhost:{port}") as channel:
-                stub = messages_pb2_grpc.MetricServiceStub(channel)
-                stub.ClearMetric(empty_pb2.Empty())
+    def test_thread_rpc_client(self):
+        service = LocalEncoderDecoderService(self.config, "TEE")
 
         self.config.load_size = 64
         path = "data/open_domain_data/NQ/dev_with_scores.json"
@@ -85,7 +86,7 @@ class TestUnit(TestConfigLoggerBase):
 
         dispatcher = Dispatcher(self.config)
         dispatcher.registry_request_source(local_request)
-        dispatcher.endpoint_loop()
+        dispatcher.endpoint_loop_thread(service)
 
     def test_adaptive_passage_selection(self):
         public_scores = torch.Tensor([60]) / 100

@@ -20,7 +20,7 @@ class FusionAggregate(Dependency):
         finished = self.public_task.is_finished and self.private_task.is_finished
         if not finished:
             return False
-        public_scores = self.public_tase.input["scores"]
+        public_scores = self.public_task.input["scores"]
         public_contexts = self.public_task.output["contexts"]
         public_context_masks = self.public_task.output["context_masks"]
         private_scores = self.private_task.input["scores"]

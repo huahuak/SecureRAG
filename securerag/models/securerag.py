@@ -19,7 +19,8 @@ ENABLE_DEV = False
 
 
 class SecureRAG(nn.Module):
-    def __init__(self, fidt5: FiDT5, enable_algorithm=True, enable_topk=False):
+
+    def __init__(self, fidt5: FiDT5, enable_algorithm=False, enable_topk=False):
         super().__init__()
         self.fidt5 = fidt5.to("cuda")
         if ENABLE_DEV:

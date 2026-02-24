@@ -264,7 +264,9 @@ class SecureRAG4T5Collator(object):
         self.private_ratio = private_passage_ratio
 
     @Profiler("SecureRAGCollator")
-    def __call__(self, batch):
+    def __call__(self, batch, private_ratio=None):
+        if private_ratio is None:
+            private_ratio = self.private_ratio
         assert batch[0]["target"] != None
         index = torch.tensor([ex["index"] for ex in batch])
         target = [ex["target"] for ex in batch]
@@ -287,7 +289,7 @@ class SecureRAG4T5Collator(object):
             if example["passages"] is None:
                 return example["question"]
             size = len(example["passages"])
-            private_size = max(1, int(size * self.private_ratio))
+            private_size = max(1, int(size * private_ratio))
             question_prefix = "question:"
             title_prefix = "title:"
             passage_prefix = "context:"

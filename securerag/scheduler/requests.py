@@ -30,7 +30,9 @@ class LocalRequestSource(RequestSource):
         self.dataset = None
         self.curr = 0
         self.lasttime = time.time()
-        self.request_per_second = 3
+        self.request_per_second = 32
+
+        self.gen = self.private_passage_ratio_generator()
 
     def registry_source(self, path, config):
         datas = data.load(path=path, size=config.load_size)
@@ -53,14 +55,21 @@ class LocalRequestSource(RequestSource):
             req.arrive_time = now
             req.input_data = self.dataset[self.curr]
             n_passages = len(req.input_data["passages"])
-            req.private_passage_size = int(
-                self.get_private_passage_ratio() * n_passages
-            )
+            req.private_passage_size = int(next(self.gen) * n_passages)
             output.append(req)
             request_size -= 1
             self.curr += 1
 
         return output
 
-    def get_private_passage_ratio(self):
-        return random.random()
+    def private_passage_ratio_generator(self):  # -> Any:
+        curr = 0
+
+        while True:
+            ratio = 0
+            if curr % 10 == 0:
+                ratio = random.random()
+            else:
+                ratio = random.random() / 10
+            curr += 1
+            yield ratio

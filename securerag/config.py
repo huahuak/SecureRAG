@@ -24,7 +24,7 @@ class Config:
         self.parser.add_argument("--log_path", type=str, default="./log/stdout.log")
 
     def __add_generator_options(self):
-        self.parser.add_argument("--n_context", type=int, default=10)
+        self.parser.add_argument("--n_context", type=int, default=100)
         self.parser.add_argument("--batch_size", type=int, default=2)
         self.parser.add_argument("--text_maxlength", type=int, default=200)
         self.parser.add_argument("--answer_maxlength", type=int, default=50)

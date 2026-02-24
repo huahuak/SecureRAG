@@ -81,9 +81,16 @@ class FiDT5(transformers.T5ForConditionalGeneration):
     # We need to reskze the inputs here, as the generate method expect 2D tensors
     @Profiler("FiDT5.generate")
     def generate(
-        self, input_ids, attention_mask, max_length, return_scores=False, **kwargs
+        self,
+        input_ids,
+        attention_mask,
+        max_length,
+        return_scores=False,
+        return_encoder_outputs=False,
+        **kwargs,
     ):
         self.tmp_scores = []
+        self.tmp_encoder_outputs = []
         # input_ids: (bsz, n_passages, passage_dim)
         self.encoder.n_passages = input_ids.size(1)
         output = self.do_generate(
@@ -91,10 +98,12 @@ class FiDT5(transformers.T5ForConditionalGeneration):
             attention_mask=attention_mask.view(attention_mask.size(0), -1),
             max_length=max_length,
         )
+        out = output
         if return_scores:
-            return (output, self.tmp_scores)
-        else:
-            return output
+            out = (output, self.tmp_scores)
+        if return_encoder_outputs:
+            out = (output, self.tmp_encoder_outputs)
+        return out
 
     def postprocess_next_token_scores(self, scores, **kwargs):
         self.tmp_scores.append(scores)
@@ -568,6 +577,7 @@ class FiDT5(transformers.T5ForConditionalGeneration):
 
             # save encoder_outputs in `model_kwargs`
             model_kwargs["encoder_outputs"] = encoder_outputs
+            self.tmp_encoder_outputs = encoder_outputs
 
         else:
             cur_len = input_ids.shape[-1]
@@ -1430,5 +1440,6 @@ class Retriever(transformers.PreTrainedModel):
     def kldivloss(self, score, gold_score):
         gold_score = torch.softmax(gold_score, dim=-1)
         score = torch.nn.functional.log_softmax(score, dim=-1)
+        return self.loss_fct(score, gold_score)
         return self.loss_fct(score, gold_score)
         return self.loss_fct(score, gold_score)

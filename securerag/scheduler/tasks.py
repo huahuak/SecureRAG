@@ -2,6 +2,7 @@ import json
 import time
 from collections import defaultdict
 from concurrent import futures
+from copy import deepcopy
 from typing import List, overload
 
 import grpc
@@ -102,8 +103,11 @@ class Task:
 
         return (public_task, private_task)
 
-    def create_decoder_task(pre_task):
-        task = Task()
+    def create_decoder_task(pre_task, new_task=True):
+        if new_task:
+            task = Task()
+        else:
+            task = pre_task
         task.request = pre_task.request
         task.env_type = pre_task.env_type
         # extract input
@@ -218,6 +222,36 @@ class TaskQueue(List[Task]):
         for task in self:
             total += now - task.request.arrive_time
         return total
+
+    def pop_encoder_tasks(self, passages_size):
+        if len(self) == 0:
+            return []
+        now = time.time()
+
+        def sort_key(x):
+            waiting = now - x.request.arrive_time
+            n_passages = len(x.input["passages"])
+            value = waiting / n_passages
+            return value
+
+        sorted_tasks = sorted(self, key=sort_key, reverse=True)
+        curr_size = 0
+        ret_tasks = []
+        for x in sorted_tasks:
+            n_passages = len(x.input["passages"])
+            if curr_size + n_passages > passages_size:
+                break
+            curr_size += n_passages
+            ret_tasks.append(x)
+            self.remove(x)
+        if len(ret_tasks) == 0:
+            x = sorted_tasks[0]
+            ret_tasks.append(x)
+            self.remove(x)
+
+        print(f"passages per task: {[len(x.input['passages']) for x in ret_tasks]} ")
+
+        return ret_tasks
 
     def pop_earliest_tasks(self, size, need_dependency=False):
         out = []
@@ -371,7 +405,7 @@ class EncoderDecoderSerivce(
 
         if type == "OFFLAODING":
             self.port = 8083
-            self.model: SecureRAG = SecureRAG(fidt5=self.model)
+            self.model = SecureRAG(fidt5=self.model)
             self.collator = SecureRAG4T5Collator(
                 tokenizer=self.tokenizer,
                 text_maxlength=self.text_maxlength,
@@ -505,8 +539,7 @@ class EncoderDecoderSerivce(
         tasks = request.tasks
         batch_input = [Task.from_rpc_task(task).input for task in tasks]
         bsz = len(batch_input)
-        self.collator.private_passage_ratio = request.max_private_ratio
-        batch = self.collator(batch_input)
+        batch = self.collator(batch_input, private_ratio=request.max_private_ratio)
         (
             context_ids,
             context_masks,  # bsz * docs * dim
@@ -619,3 +652,125 @@ class EncoderDecoderSerivce(
         print(f"{self.type} service is running...")
         server.wait_for_termination()
         server.wait_for_termination()
+
+
+class LocalEncoderDecoderService(EncoderDecoderSerivce):
+    def __init__(self, cfg, type):
+        super().__init__(cfg, type)
+        self.gpu_model = deepcopy(self.model).to("cuda")
+        self.gpu_encoder = self.gpu_model.get_encoder().encoder
+
+    @torch.inference_mode()
+    def ExecuteBatchGenerateTask(self, tasks, device="cpu"):
+        batch_input = [task.input for task in tasks]
+        bsz = len(batch_input)
+        batch = self._tokenizer(batch_input)
+        (
+            context_ids,
+            context_masks,
+        ) = (
+            batch.passage_ids,
+            batch.passage_masks,
+        )
+        context_ids = context_ids.view(bsz, -1, context_ids.size(-1))
+        context_masks = context_masks.view(bsz, -1, context_masks.size(-1))
+        if device == "cpu":
+            model = self.model
+        elif device == "cuda":
+            model = self.gpu_model
+        (output, encoder_contexts) = model.generate(
+            input_ids=context_ids.to(device),
+            attention_mask=context_masks.to(device),
+            max_length=self.answer_maxlength,
+            return_encoder_outputs=True,
+        )
+        ans = self.tokenizer.batch_decode(output, skip_special_tokens=True)
+        print(ans)
+
+        passages_dim = self.passage_per_task(batch_input)
+        curr = 0
+        for idx, dim in enumerate(passages_dim):
+            text_ans = ans[idx]
+            tmp = tasks[idx]
+            tmp.output = {
+                "text_ans": text_ans,
+                "contexts": encoder_contexts[curr : curr + dim],
+                "context_masks": context_masks[curr : curr + dim],
+            }
+            curr += dim
+
+    @torch.inference_mode()
+    def ExecuteBatchEncoderTask(self, tasks, device="cpu"):
+        batch_input = [task.input for task in tasks]
+        with Profiler("tokenizer_tee"):
+            batch = self._tokenizer(batch_input)
+        (
+            context_ids,
+            context_masks,
+        ) = (
+            batch.passage_ids,
+            batch.passage_masks,
+        )
+        if device == "cpu":
+            encoder = self.encoder
+        elif device == "cuda":
+            encoder = self.gpu_encoder
+        is_cuda = True if device == "cuda" else False
+        with Profiler(f"{device}_ENCODER", is_cuda=is_cuda):
+            output = encoder(
+                input_ids=context_ids.to(device),
+                attention_mask=context_masks.to(device),
+                return_dict=True,
+            )
+        encoder_contexts = output["last_hidden_state"].to("cpu")
+        passages_dim = self.passage_per_task(batch_input)
+        curr = 0
+        for idx, dim in enumerate(passages_dim):
+            tmp = tasks[idx]
+            tmp.output = {
+                "contexts": encoder_contexts[curr : curr + dim],
+                "context_masks": context_masks[curr : curr + dim],
+            }
+            curr += dim
+
+    @torch.inference_mode()
+    def ExecuteBatchDecoderTask(self, tasks, device="cpu"):
+        batch_size = len(tasks)
+        batch_input = [task.input for task in tasks]
+        contexts = [input["contexts"] for input in batch_input]
+        masks = [input["context_masks"] for input in batch_input]
+        maxlen = max([context.size(0) for context in contexts])
+        contexts = torch.stack(
+            [
+                pad(x, (0, 0, 0, maxlen - x.size(0)), value=self.pad_token_id)
+                for x in contexts
+            ]
+        )
+        masks = torch.stack(
+            [pad(x, (0, maxlen - x.size(0)), value=False) for x in masks]
+        )
+        encoder_outputs = ModelOutput()
+        encoder_outputs["last_hidden_state"] = contexts.to(device)
+
+        if device == "cpu":
+            model = self.model
+        elif device == "cuda":
+            model = self.gpu_model
+
+        is_cuda = True if device == "cuda" else False
+        with Profiler(f"{device}_DECODER", is_cuda=is_cuda):
+            ans = model.generate_without_encoder(
+                input_ids=torch.empty(batch_size, 1).to(device),  # useless input_ids
+                encoder_outputs=encoder_outputs,
+                attention_mask=masks.to(device),
+            )
+        ans = ans.to("cpu")
+        batch_text_ans = self.tokenizer.batch_decode(ans, skip_special_tokens=True)
+        print(batch_text_ans)
+        for idx, tokens in enumerate(ans):
+            text_ans = batch_text_ans[idx]
+            tmp = tasks[idx]
+            if tmp.output is None:
+                tmp.output = {}
+            tmp.output["tokens"] = tokens
+            tmp.output["text_ans"] = text_ans
