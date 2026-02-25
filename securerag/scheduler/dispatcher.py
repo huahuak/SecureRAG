@@ -7,6 +7,7 @@ import grpc
 import psutil
 import torch
 
+from securerag.data import Profiler
 from securerag.rpc import messages_pb2_grpc
 from securerag.scheduler.requests import RequestSource
 from securerag.scheduler.tasks import (
@@ -116,7 +117,7 @@ class Dispatcher:
 
         def tee_loop():
             while True:
-                batch_passages_size = 256
+                batch_passages_size = 1
                 batch = []
                 while len(batch) == 0:
                     batch = self.tee_encoder_task_queue.pop_encoder_tasks(
@@ -129,8 +130,9 @@ class Dispatcher:
                     arrive_time = task.request.arrive_time
                     add_metric("LATENCY_ENCODER_TEE", time.time() - arrive_time)
                     add_metric("finished_encoder_tee", 1)
-                # while not all(task.dep.resolve() for task in batch):
-                #     yield
+                with Profiler("SYNC_TEE"):
+                    while not all(task.dep.resolve() for task in batch):
+                        yield
                 batch = [Task.create_decoder_task(task) for task in batch]
                 service.ExecuteBatchDecoderTask(batch)
                 for task in batch:
@@ -161,7 +163,7 @@ class Dispatcher:
                     self.gpu_encoder_task_queue.append(pub)
                 if pri is not None:
                     self.tee_encoder_task_queue.append(pri)
-            # gpu()
+            gpu()
             next(tee_event)
 
     def endpoint_loop(self):

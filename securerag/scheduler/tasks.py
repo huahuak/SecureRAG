@@ -534,6 +534,78 @@ class EncoderDecoderSerivce(
         )
 
     @torch.inference_mode()
+    @Profiler("ExecuteBatchContinusEncoderDecoderTask")
+    def ExecuteBatchContinusEncoderDecoderTask(self, request, context):
+        tasks = request.tasks
+        batch_input = [Task.from_rpc_task(task).input for task in tasks]
+        batch = self._tokenizer(batch_input)
+        (
+            context_ids,
+            context_masks,
+        ) = (
+            batch.passage_ids,
+            batch.passage_masks,
+        )
+        is_cuda = True if self.type == "GPU" else False
+        with Profiler(f"{self.type}_ENCODER", is_cuda=is_cuda):
+            output = self.encoder(
+                input_ids=context_ids.to(self.device),
+                attention_mask=context_masks.to(self.device),
+                return_dict=True,
+            )
+        encoder_contexts = output["last_hidden_state"].to("cpu")
+        passages_dim = self.passage_per_task(batch_input)
+        ret_tasks = []
+        curr = 0
+        for dim in passages_dim:
+            tmp = Task()
+            tmp.output = {
+                "contexts": encoder_contexts[curr : curr + dim],
+                "context_masks": context_masks[curr : curr + dim],
+            }
+            curr += dim
+            ret_tasks.append(tmp)
+
+        batch_size = len(tasks)
+        batch_input = [task.input for task in ret_tasks]
+        contexts = [input["contexts"] for input in batch_input]
+        masks = [input["context_masks"] for input in batch_input]
+        maxlen = max([context.size(0) for context in contexts])
+        contexts = torch.stack(
+            [
+                pad(x, (0, 0, 0, maxlen - x.size(0)), value=self.pad_token_id)
+                for x in contexts
+            ]
+        )
+        masks = torch.stack(
+            [pad(x, (0, maxlen - x.size(0)), value=False) for x in masks]
+        )
+        encoder_outputs = ModelOutput()
+        encoder_outputs["last_hidden_state"] = contexts.to(self.device)
+        is_cuda = True if self.type == "GPU" else False
+        with Profiler(f"{self.type}_DECODER", is_cuda=is_cuda):
+            ans = self.model.generate_without_encoder(
+                input_ids=torch.empty(batch_size, 1).to(
+                    self.device
+                ),  # useless input_ids
+                encoder_outputs=encoder_outputs,
+                attention_mask=masks.to(self.device),
+            )
+        ans = ans.to("cpu")
+        batch_text_ans = self.tokenizer.batch_decode(ans, skip_special_tokens=True)
+        print(batch_text_ans)
+        for idx, tokens in enumerate(ans):
+            text_ans = batch_text_ans[idx]
+            tmp = tasks[idx]
+            if tmp.output is None:
+                tmp.output = {}
+            tmp.output["tokens"] = tokens
+            tmp.output["text_ans"] = text_ans
+
+        add_metric("finished_continus_encoder_decoder_task", 1)
+        show_metric()
+
+    @torch.inference_mode()
     @Profiler("ExecuteBatchOffloadingGenerateTask")
     def ExecuteBatchOffloadingGenerateTask(self, request, context):
         tasks = request.tasks
