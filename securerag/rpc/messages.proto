@@ -13,6 +13,7 @@ service DecoderService {
 service GenerateService {
   rpc ExecuteBatchGenerateTask(Request) returns (Response);
   rpc ExecuteBatchOffloadingGenerateTask(Request) returns (Response);
+  rpc ExecuteBatchContinueEncoderDecoderTask(Request) returns (Response);
 }
 
 service MetricService {

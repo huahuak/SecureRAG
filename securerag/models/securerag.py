@@ -15,12 +15,12 @@ from securerag.models.utils import merge_tensor
 from securerag.profiler import Profiler
 from securerag.utils import add_metric, clear_metric, get_metric
 
-ENABLE_DEV = False
+ENABLE_DEV = True
 
 
 class SecureRAG(nn.Module):
 
-    def __init__(self, fidt5: FiDT5, enable_algorithm=False, enable_topk=False):
+    def __init__(self, fidt5: FiDT5, enable_algorithm=True, enable_topk=False):
         super().__init__()
         self.fidt5 = fidt5.to("cuda")
         if ENABLE_DEV:
@@ -125,6 +125,41 @@ class SecureRAG(nn.Module):
                 pri_fusion_size = round(pri_fusion_size + 1)  # plus 1 to get length
                 pri_fusion_size = max(pri_fusion_size, 1)
                 pri_fusion_scores, idx = doc_scores_all.topk(dim=-1, k=pri_fusion_size)
+
+                # def fn(public_scores, private_scores):
+                #     all_scores: torch.Tensor = torch.cat(
+                #         [public_scores, private_scores], dim=0
+                #     )
+                #     c_size = public_scores.size(0)
+                #     cp_size = private_scores.size(0)
+                #     total_size = c_size + cp_size
+
+                #     alpha = public_scores.mean() + (
+                #         (public_scores.max() - public_scores.mean()) / self.eta
+                #     )
+                #     idx = torch.where(public_scores > alpha)
+                #     partial_scores = public_scores[idx]
+                #     if abs(
+                #         private_scores.sum() - public_scores.sum()
+                #     ) < partial_scores.sum() * 1.5 * (total_size / max(1, c_size)):
+                #         return idx, all_scores[idx]
+                #     else:
+                #         return torch.Tensor(), None
+
+                # result_idx = []
+                # for p, r in zip(public_scores, private_scores):
+                #     idx, _ = fn(p, r)
+                #     result_idx.append(idx[0])
+                # result_idx.pad()
+                # maxlen = max([x.size(0) for x in result_idx])
+                # idx = torch.stack(
+                #     [
+                #         functional.pad(x, (0, maxlen - x.size(0)), value=0)
+                #         for x in result_idx
+                #     ]
+                # )
+                # pri_fusion_scores = doc_scores_all.gather(dim=1, index=idx)
+
             # algor 2
             elif self.enable_topk:
                 pri_fusion_size = round(total_size * self.topk)

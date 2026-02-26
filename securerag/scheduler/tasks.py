@@ -111,8 +111,8 @@ class Task:
         task.request = pre_task.request
         task.env_type = pre_task.env_type
         # extract input
-        question = pre_task.input["question"]
-        scores = pre_task.input["scores"]
+        # question = pre_task.input["question"]
+        # scores = pre_task.input["scores"]
         # extract output
         contexts = pre_task.output["contexts"]
         contexts = contexts.contiguous().view(
@@ -121,8 +121,8 @@ class Task:
         masks = pre_task.output["context_masks"]
         masks = masks.contiguous().view(masks.size(0) * masks.size(1))
         task.input = {
-            "question": question,
-            "scores": scores,
+            # "question": question,
+            # "scores": scores,
             "contexts": contexts,
             "context_masks": masks,
         }
@@ -333,6 +333,30 @@ class BatchDecoderTask(BatchTask):
         return self.tasks
 
 
+class BatchContinueEncoderDecoderTask(BatchTask):
+
+    def rpc_execute(self, stub: EncoderServiceStub):
+        print(f"rpc_execute({self.get_env_type()}, Encoder)")
+        rpc_tasks = []
+        for task in self.tasks:
+            rpc_tasks.append(task.to_rpc_task())
+        request = messages_pb2.Request(tasks=rpc_tasks)
+        self.future = stub.ExecuteBatchContinueEncoderDecoderTask.future(request)
+
+    def post_process(self):
+        if not self.future.done():
+            return
+        response = self.future.result()
+        ret_tasks = [Task.from_rpc_task(rpc_task) for rpc_task in response.tasks]
+        for task, ret in zip(self.tasks, ret_tasks):
+            task.output = ret.output
+            task.is_finished = True
+            print(
+                f"question: {task.input.get('question')}, answer: {task.output.get('text_ans')}"
+            )
+        return self.tasks
+
+
 class BatchGenerateTask(BatchTask):
     def rpc_execute(self, stub, enable_offloading=True):
         print(f"rpc_execute({self.get_env_type()}, Generate)")
@@ -534,8 +558,106 @@ class EncoderDecoderSerivce(
         )
 
     @torch.inference_mode()
-    @Profiler("ExecuteBatchContinusEncoderDecoderTask")
-    def ExecuteBatchContinusEncoderDecoderTask(self, request, context):
+    @Profiler("ExecuteBatchContinueEncoderDecoderTask")
+    def ExecuteBatchContinueEncoderDecoderTask(self, request, context):
+        tasks = request.tasks
+        batch_input = [Task.from_rpc_task(task).input for task in tasks]
+
+        # 1️⃣ 批量 tokenizer
+        batch = self._tokenizer(batch_input)
+        context_ids, context_masks = batch.passage_ids.to(
+            self.device
+        ), batch.passage_masks.to(self.device)
+
+        # 2️⃣ encoder 前向，全部在 GPU
+        is_cuda = self.type == "GPU"
+        with Profiler(f"{self.type}_ENCODER", is_cuda=is_cuda):
+            output = self.encoder(
+                input_ids=context_ids,
+                attention_mask=context_masks,
+                return_dict=True,
+            )
+        encoder_contexts = output["last_hidden_state"]  # GPU tensor，保留在 GPU
+
+        # 3️⃣ 计算每个 task 的长度，用 chunk 代替 Python 循环切片
+        passages_dim = self.passage_per_task(batch_input)
+        cum_dims = [0] + list(torch.cumsum(torch.tensor(passages_dim), dim=0).tolist())
+        contexts_list = [
+            encoder_contexts[cum_dims[i] : cum_dims[i + 1]]
+            for i in range(len(passages_dim))
+        ]
+        masks_list = [
+            context_masks[cum_dims[i] : cum_dims[i + 1]]
+            for i in range(len(passages_dim))
+        ]
+
+        # 4️⃣ 创建 decoder tasks
+        ret_tasks = []
+        for c, m in zip(contexts_list, masks_list):
+            tmp = Task()
+            tmp.output = {"contexts": c, "context_masks": m}
+            ret_tasks.append(tmp)
+        batch_size = len(ret_tasks)
+
+        # fusion
+        contexts_list = [
+            c.view(c.size(0) * c.size(1), c.size(2)) for c in contexts_list
+        ]
+        masks_list = [m.view(m.size(0) * m.size(1)) for m in masks_list]
+        # 5️⃣ GPU 上 padding
+        maxlen = max([c.size(0) for c in contexts_list])
+        contexts_padded = torch.stack(
+            [
+                torch.nn.functional.pad(
+                    c, (0, 0, 0, maxlen - c.size(0)), value=self.pad_token_id
+                )
+                for c in contexts_list
+            ]
+        )
+        masks_padded = torch.stack(
+            [
+                torch.nn.functional.pad(m, (0, maxlen - m.size(0)), value=False)
+                for m in masks_list
+            ]
+        )
+
+        # 6️⃣ decoder 前向
+        encoder_outputs = ModelOutput()
+        encoder_outputs["last_hidden_state"] = contexts_padded
+
+        with Profiler(f"{self.type}_DECODER", is_cuda=is_cuda):
+            ans = self.model.generate_without_encoder(
+                input_ids=torch.empty(
+                    batch_size, 1, device=self.device
+                ),  # dummy input_ids
+                encoder_outputs=encoder_outputs,
+                attention_mask=masks_padded,
+            )
+        ans = ans.to("cpu")  # batch_decode 在 CPU
+
+        # 7️⃣ tokenizer decode（可以多线程加速）
+        batch_text_ans = self.tokenizer.batch_decode(ans, skip_special_tokens=True)
+
+        for tmp, tokens, text_ans in zip(ret_tasks, ans, batch_text_ans):
+            if tmp.output is None:
+                tmp.output = {}
+            tmp.output["tokens"] = tokens
+            tmp.output["text_ans"] = text_ans
+
+        add_metric("finished_continue_encoder_decoder_task", 1)
+        show_metric()
+
+        # 8️⃣ 清理 GPU 内存
+        del encoder_outputs, contexts_padded, masks_padded, ans
+        torch.cuda.empty_cache()
+
+        return messages_pb2.Response(
+            tasks=[Task.to_rpc_task(ret_task) for ret_task in ret_tasks]
+        )
+
+    @torch.inference_mode()
+    @Profiler("ExecuteBatchContinueEncoderDecoderTask")
+    def ExecuteBatchContinueEncoderDecoderTaskOLD(self, request, context):
         tasks = request.tasks
         batch_input = [Task.from_rpc_task(task).input for task in tasks]
         batch = self._tokenizer(batch_input)
@@ -565,7 +687,7 @@ class EncoderDecoderSerivce(
             }
             curr += dim
             ret_tasks.append(tmp)
-
+        ret_tasks = [Task.create_decoder_task(pre, new_task=False) for pre in ret_tasks]
         batch_size = len(tasks)
         batch_input = [task.input for task in ret_tasks]
         contexts = [input["contexts"] for input in batch_input]
@@ -596,14 +718,21 @@ class EncoderDecoderSerivce(
         print(batch_text_ans)
         for idx, tokens in enumerate(ans):
             text_ans = batch_text_ans[idx]
-            tmp = tasks[idx]
+            tmp = ret_tasks[idx]
             if tmp.output is None:
                 tmp.output = {}
             tmp.output["tokens"] = tokens
             tmp.output["text_ans"] = text_ans
 
-        add_metric("finished_continus_encoder_decoder_task", 1)
+        add_metric("finished_continue_encoder_decoder_task", 1)
         show_metric()
+
+        del encoder_outputs, contexts, masks, ans
+        torch.cuda.empty_cache()
+
+        return messages_pb2.Response(
+            tasks=[Task.to_rpc_task(ret_task) for ret_task in ret_tasks]
+        )
 
     @torch.inference_mode()
     @Profiler("ExecuteBatchOffloadingGenerateTask")
@@ -729,8 +858,8 @@ class EncoderDecoderSerivce(
 class LocalEncoderDecoderService(EncoderDecoderSerivce):
     def __init__(self, cfg, type):
         super().__init__(cfg, type)
-        self.gpu_model = deepcopy(self.model).to("cuda")
-        self.gpu_encoder = self.gpu_model.get_encoder().encoder
+        # self.gpu_model = deepcopy(self.model).to("cuda")
+        # self.gpu_encoder = self.gpu_model.get_encoder().encoder
 
     @torch.inference_mode()
     def ExecuteBatchGenerateTask(self, tasks, device="cpu"):

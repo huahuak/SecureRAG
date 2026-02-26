@@ -189,6 +189,11 @@ class GenerateServiceStub(object):
                 request_serializer=securerag_dot_rpc_dot_messages__pb2.Request.SerializeToString,
                 response_deserializer=securerag_dot_rpc_dot_messages__pb2.Response.FromString,
                 _registered_method=True)
+        self.ExecuteBatchContinueEncoderDecoderTask = channel.unary_unary(
+                '/GenerateService/ExecuteBatchContinueEncoderDecoderTask',
+                request_serializer=securerag_dot_rpc_dot_messages__pb2.Request.SerializeToString,
+                response_deserializer=securerag_dot_rpc_dot_messages__pb2.Response.FromString,
+                _registered_method=True)
 
 
 class GenerateServiceServicer(object):
@@ -206,6 +211,12 @@ class GenerateServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ExecuteBatchContinueEncoderDecoderTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_GenerateServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -216,6 +227,11 @@ def add_GenerateServiceServicer_to_server(servicer, server):
             ),
             'ExecuteBatchOffloadingGenerateTask': grpc.unary_unary_rpc_method_handler(
                     servicer.ExecuteBatchOffloadingGenerateTask,
+                    request_deserializer=securerag_dot_rpc_dot_messages__pb2.Request.FromString,
+                    response_serializer=securerag_dot_rpc_dot_messages__pb2.Response.SerializeToString,
+            ),
+            'ExecuteBatchContinueEncoderDecoderTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExecuteBatchContinueEncoderDecoderTask,
                     request_deserializer=securerag_dot_rpc_dot_messages__pb2.Request.FromString,
                     response_serializer=securerag_dot_rpc_dot_messages__pb2.Response.SerializeToString,
             ),
@@ -272,6 +288,33 @@ class GenerateService(object):
             request,
             target,
             '/GenerateService/ExecuteBatchOffloadingGenerateTask',
+            securerag_dot_rpc_dot_messages__pb2.Request.SerializeToString,
+            securerag_dot_rpc_dot_messages__pb2.Response.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExecuteBatchContinueEncoderDecoderTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/GenerateService/ExecuteBatchContinueEncoderDecoderTask',
             securerag_dot_rpc_dot_messages__pb2.Request.SerializeToString,
             securerag_dot_rpc_dot_messages__pb2.Response.FromString,
             options,

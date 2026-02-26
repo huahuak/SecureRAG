@@ -623,6 +623,7 @@ class TestSecureRAG(TestModelBase):
                 tokenizer=self.tokenizer,
                 cfg=self.config,
             )
+            show_metric()
 
     def test_pri_eta_comb_cmp_eval(self):
         for k in self.k_values:  # for range k

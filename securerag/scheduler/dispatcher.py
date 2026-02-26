@@ -6,11 +6,13 @@ from urllib import request
 import grpc
 import psutil
 import torch
+from google.protobuf import empty_pb2
 
 from securerag.data import Profiler
 from securerag.rpc import messages_pb2_grpc
 from securerag.scheduler.requests import RequestSource
 from securerag.scheduler.tasks import (
+    BatchContinueEncoderDecoderTask,
     BatchDecoderTask,
     BatchEncoderTask,
     BatchGenerateTask,
@@ -40,8 +42,8 @@ class Dispatcher:
 
         self.tee_encoder_batch_size = 4
         self.tee_decoder_batch_size = 4
-        self.gpu_encoder_batch_size = 8
-        self.gpu_decoder_batch_size = 8
+        self.gpu_encoder_batch_size = 4
+        self.gpu_decoder_batch_size = 4
 
     def registry_request_source(self, source: RequestSource):
         self.request_source = source
@@ -83,27 +85,38 @@ class Dispatcher:
             show_metric()
 
     def endpoint_loop_thread(self, service: LocalEncoderDecoderService):
-        # cpus = range(0, 10, 1)
-        # print(cpus, len(cpus))
-        # psutil.Process().cpu_affinity(cpus)
-        # print(psutil.Process().cpu_affinity())
-        # torch.set_num_threads(len(cpus))
-
         if self.request_source is None:
             print("self.request_source must be registred")
             return
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.service = service
 
+        port = 8081
+        channel = grpc.insecure_channel(
+            f"localhost:{port}",
+            options=[
+                ("grpc.max_receive_message_length", -1),
+                ("grpc.max_send_message_length", -1),
+            ],
+        )
+        stub = messages_pb2_grpc.MetricServiceStub(channel)
+        stub.ClearMetric(empty_pb2.Empty())
+        stub = messages_pb2_grpc.GenerateServiceStub(channel)
+
+        gpu_post_queue = []
+
+        @Profiler("function_gpu")
         def gpu():
             batch = self.gpu_encoder_task_queue[: self.gpu_encoder_batch_size]
             self.gpu_encoder_task_queue[:] = self.gpu_encoder_task_queue[len(batch) :]
             if len(batch) == 0:
                 return
-            service.ExecuteBatchEncoderTask(batch, device="cuda")
-            batch = [Task.create_decoder_task(task, new_task=False) for task in batch]
-            service.ExecuteBatchDecoderTask(batch, device="cuda")
-            for task in batch:
+            batch_task = BatchContinueEncoderDecoderTask().add_tasks(batch)
+            batch_task.rpc_execute(stub)
+            gpu_post_queue.append(batch_task)
+            return
+            batch_task.future.result()
+            for task in batch_task.post_process():
                 arrive_time = task.request.arrive_time
                 finish_time = task.request.finish_time = time.time()
                 task.is_finished = True
@@ -115,38 +128,80 @@ class Dispatcher:
             show_metric()
             return
 
-        def tee_loop():
-            while True:
-                batch_passages_size = 1
-                batch = []
-                while len(batch) == 0:
-                    batch = self.tee_encoder_task_queue.pop_encoder_tasks(
-                        batch_passages_size
-                    )
-                    yield
-                service.ExecuteBatchEncoderTask(batch)
-                for task in batch:
-                    task.is_finished = True
-                    arrive_time = task.request.arrive_time
-                    add_metric("LATENCY_ENCODER_TEE", time.time() - arrive_time)
-                    add_metric("finished_encoder_tee", 1)
-                with Profiler("SYNC_TEE"):
-                    while not all(task.dep.resolve() for task in batch):
-                        yield
-                batch = [Task.create_decoder_task(task) for task in batch]
-                service.ExecuteBatchDecoderTask(batch)
-                for task in batch:
+        @Profiler("function_gpu_post")
+        def gpu_post():
+            for batch_task in gpu_post_queue:
+                tasks = batch_task.post_process()
+                if tasks is None:
+                    continue
+                else:
+                    gpu_post_queue.remove(batch_task)
+                for task in tasks:
                     arrive_time = task.request.arrive_time
                     finish_time = task.request.finish_time = time.time()
                     task.is_finished = True
                     print(
                         f"question: {task.input.get('question')}, answer: {task.output.get('text_ans')}"
                     )
-                    add_metric("LATENCY_TEE", finish_time - arrive_time)
-                    add_metric("finished_request_tee", 1)
-                    if len(get_metric("finished_request_tee")) == 55:
-                        add_metric("FINISH_TIME_TEE", time.time() - start_time)
+                    add_metric("LATENCY_GPU", finish_time - arrive_time)
+                    add_metric("finished_request_gpu", 1)
                 show_metric()
+
+        def tee_loop():
+            decoder_queue = []
+            while True:
+
+                def encoder():
+                    batch_passages_size = 1
+                    batch = self.tee_encoder_task_queue.pop_encoder_tasks(
+                        batch_passages_size
+                    )
+                    if len(batch) == 0:
+                        return None
+                    service.ExecuteBatchEncoderTask(batch)
+                    now = time.time()
+                    for task in batch:
+                        task.is_finished = True
+                        arrive_time = task.request.arrive_time
+                        add_metric("LATENCY_ENCODER_TEE", time.time() - arrive_time)
+                        add_metric("finished_encoder_tee", 1)
+                        arrive_time = task.request.arrive_time
+                        task.request.first_token_time = now
+                    show_metric()
+                    return batch
+
+                def decoder(batch):
+                    batch = [Task.create_decoder_task(task) for task in batch]
+                    now = time.time()
+                    for task in batch:
+                        ttft = task.request.first_token_time
+                        add_metric("SYNC_TEE", now - ttft)
+                    service.ExecuteBatchDecoderTask(batch)
+                    for task in batch:
+                        arrive_time = task.request.arrive_time
+                        finish_time = task.request.finish_time = time.time()
+                        task.is_finished = True
+                        print(
+                            f"question: {task.input.get('question')}, answer: {task.output.get('text_ans')}"
+                        )
+                        add_metric("LATENCY_TEE", finish_time - arrive_time)
+                        add_metric("finished_request_tee", 1)
+                        if len(get_metric("finished_request_tee")) == 55:
+                            add_metric("FINISH_TIME_TEE", time.time() - start_time)
+                    show_metric()
+
+                for batch in decoder_queue:
+                    if all(task.dep.resolve() for task in batch):
+                        decoder(batch)
+                        yield
+                decoder_queue = [
+                    batch
+                    for batch in decoder_queue
+                    if not all(task.dep.resolve() for task in batch)
+                ]
+                batch = encoder()
+                if batch is not None:
+                    decoder_queue.append(batch)
                 yield
 
         tee_event = tee_loop()
@@ -165,6 +220,7 @@ class Dispatcher:
                     self.tee_encoder_task_queue.append(pri)
             gpu()
             next(tee_event)
+            gpu_post()
 
     def endpoint_loop(self):
         if self.request_source is None:
