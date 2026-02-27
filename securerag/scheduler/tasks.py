@@ -51,6 +51,9 @@ class Task:
         self.dep = None
         self.is_finished = False
 
+    def check_dep(self):
+        return self.dep is None or self.dep.resolve()
+
     def create_native_task_from_request(req: Request):
         data = req.input_data
         input_data = {
@@ -105,6 +108,11 @@ class Task:
 
         if public_task and private_task:
             private_task.dep = FusionAggregate(public_task, private_task)
+            dep_idx = private_task.dep.get_public_dep_idx()
+            if len(dep_idx) > 0:
+                public_task.input["dep_idx"] = dep_idx
+            else:
+                private_task.dep = None
 
         return (public_task, private_task)
 
@@ -116,8 +124,8 @@ class Task:
         task.request = pre_task.request
         task.env_type = pre_task.env_type
         # extract input
-        # question = pre_task.input["question"]
-        # scores = pre_task.input["scores"]
+        question = pre_task.input["question"]
+        scores = pre_task.input["scores"]
         # extract output
         contexts = pre_task.output["contexts"]
         contexts = contexts.contiguous().view(
@@ -126,8 +134,8 @@ class Task:
         masks = pre_task.output["context_masks"]
         masks = masks.contiguous().view(masks.size(0) * masks.size(1))
         task.input = {
-            # "question": question,
-            # "scores": scores,
+            "question": question,
+            "scores": scores,
             "contexts": contexts,
             "context_masks": masks,
         }
@@ -170,6 +178,7 @@ class Task:
                 scores=tensor(input.get("scores")),
                 contexts=tensor(input.get("contexts")),
                 context_masks=tensor(input.get("context_masks")),
+                dep_idx=tensor(input.get("dep_idx")),
                 tokens=tensor(input.get("tokens")),
             )
         rpc_output = None
@@ -208,6 +217,7 @@ class Task:
                 "scores": tensor(input.scores),
                 "contexts": tensor(input.contexts),
                 "context_masks": tensor(input.context_masks),
+                "dep_idx": tensor(input.dep_idx),
             }
         if output is not None:
             task.output = {
@@ -566,6 +576,7 @@ class EncoderDecoderSerivce(
     @Profiler("ExecuteBatchContinueEncoderDecoderTask")
     def ExecuteBatchContinueEncoderDecoderTask(self, request, context):
         tasks = request.tasks
+        batch_size = len(tasks)
         batch_input = [Task.from_rpc_task(task).input for task in tasks]
 
         # 1️⃣ 批量 tokenizer
@@ -598,11 +609,14 @@ class EncoderDecoderSerivce(
 
         # 4️⃣ 创建 decoder tasks
         ret_tasks = []
-        for c, m in zip(contexts_list, masks_list):
+        for idx, (c, m) in enumerate(zip(contexts_list, masks_list)):
             tmp = Task()
-            tmp.output = {"contexts": c, "context_masks": m}
+            dep_idx = batch_input[idx]["dep_idx"]
+            if dep_idx is not None:
+                dep_idx = dep_idx.to(c.device)
+                tmp.output = {"contexts": c[dep_idx], "context_masks": m[dep_idx]}
+                add_metric("rpc_contexts_size", m.size(0))
             ret_tasks.append(tmp)
-        batch_size = len(ret_tasks)
 
         # fusion
         contexts_list = [

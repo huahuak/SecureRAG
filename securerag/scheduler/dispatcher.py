@@ -160,7 +160,9 @@ class Dispatcher:
                     return batch
 
                 def decoder(batch):
-                    batch = [Task.create_decoder_task(task) for task in batch]
+                    batch = [
+                        Task.create_decoder_task(task, new_task=False) for task in batch
+                    ]
                     now = time.time()
                     for task in batch:
                         ttft = task.request.first_token_time
@@ -180,13 +182,13 @@ class Dispatcher:
                     show_metric()
 
                 for batch in decoder_queue:
-                    if all(task.dep.resolve() for task in batch):
+                    if all(task.check_dep() for task in batch):
                         decoder(batch)
                         yield
                 decoder_queue = [
                     batch
                     for batch in decoder_queue
-                    if not all(task.dep.resolve() for task in batch)
+                    if not all(task.check_dep() for task in batch)
                 ]
                 batch = encoder()
                 if batch is not None:

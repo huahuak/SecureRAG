@@ -28,19 +28,31 @@ class FusionAggregate(Dependency):
         private_scores = self.private_task.input["scores"]
         private_contexts = self.private_task.output["contexts"]
         private_context_masks = self.private_task.output["context_masks"]
-        private_fusion_scores, idx = FusionAggregate.adaptive_passage_selection(
-            public_scores, private_scores, self.eta
+        # private_fusion_scores, idx = FusionAggregate.adaptive_passage_selection(
+        #     public_scores, private_scores, self.eta
+        # )
+        private_fusion_contexts = torch.cat([public_contexts, private_contexts], dim=0)
+        private_fusion_masks = torch.cat(
+            [public_context_masks, private_context_masks], dim=0
         )
-        contexts = torch.cat([public_contexts, private_contexts], dim=0)
-        private_fusion_contexts = contexts[idx]
-        masks = torch.cat([public_context_masks, private_context_masks], dim=0)
-        private_fusion_masks = masks[idx]
+        dep_idx = self.get_public_dep_idx()
+        private_fusion_scores = torch.cat(
+            [public_scores[dep_idx], private_scores], dim=0
+        )
 
         self.private_task.output["contexts"] = private_fusion_contexts
         self.private_task.output["context_masks"] = private_fusion_masks
         self.private_task.input["scores"] = private_fusion_scores
         add_metric("pri_fusion_size", len(private_fusion_scores))
         return True
+
+    def get_public_dep_idx(self):
+        public_scores = self.public_task.input["scores"]
+        private_scores = self.private_task.input["scores"]
+        _, idx = FusionAggregate.adaptive_passage_selection(
+            public_scores, private_scores, self.eta
+        )
+        return idx[: len(idx) - len(private_scores)]
 
     def adaptive_passage_selection(public_scores, private_scores, eta):
         # all_scores: torch.Tensor = torch.cat([public_scores, private_scores], dim=0)
