@@ -80,16 +80,16 @@ class Task:
             "index": data["index"],
             "question": data["question"],
             "target": data["target"],
-            "passages": data["passages"][private_passage_size:],
-            "scores": data["scores"][private_passage_size:],
+            "passages": data["passages"][:-private_passage_size],
+            "scores": data["scores"][:-private_passage_size],
         }
 
         private_data = {
             "index": data["index"],
             "question": data["question"],
             "target": data["target"],
-            "passages": data["passages"][:private_passage_size],
-            "scores": data["scores"][:private_passage_size],
+            "passages": data["passages"][-private_passage_size:],
+            "scores": data["scores"][-private_passage_size:],
         }
 
         public_task = None
@@ -109,6 +109,7 @@ class Task:
         if public_task and private_task:
             private_task.dep = FusionAggregate(public_task, private_task)
             dep_idx = private_task.dep.get_public_dep_idx()
+            add_metric("required_dep_size", len(dep_idx))
             if len(dep_idx) > 0:
                 public_task.input["dep_idx"] = dep_idx
             else:

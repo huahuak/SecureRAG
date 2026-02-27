@@ -74,23 +74,29 @@ class FusionAggregate(Dependency):
         cp_size = private_scores.size(0)
         total_size = c_size + cp_size
 
-        alpha = public_scores.mean() + (
-            (public_scores.max() - public_scores.mean()) / eta
-        )
-        idx = torch.where(public_scores > alpha)
-        partial_scores = public_scores[idx]
-        if abs(
-            private_scores.sum() - public_scores.sum()
-        ) < partial_scores.sum() * 1.5 * (total_size / max(1, c_size)):
+        pub_sum = public_scores.sum()
+        pri_sum = private_scores.sum()
+        all_sum = pub_sum + pri_sum
+        threshold = 0.7
+        if (pub_sum / all_sum) > threshold or (pri_sum / all_sum) > threshold:
+            idx = torch.arange(public_scores.size(0), all_scores.size(0))
+        else:
+            dist = all_sum * threshold - pri_sum
+            pub_sorted, pub_sorted_idx = public_scores.sort(dim=-1, descending=True)
+            pub_cumsum = pub_sorted.cumsum(dim=-1)
+            first_pos = torch.where(pub_cumsum > dist)[0][0]
+            need_size = int(first_pos.item() + 1)
             idx = torch.cat(
-                [idx[0], torch.arange(public_scores.size(0), all_scores.size(0))],
+                [
+                    pub_sorted_idx[:need_size],
+                    torch.arange(public_scores.size(0), all_scores.size(0)),
+                ],
                 dim=0,
             )
-        else:
-            idx = torch.arange(public_scores.size(0), all_scores.size(0))
         return all_scores[idx], idx
 
 
 class FinalAggregate(Dependency):
     def __init__(self):
+        super().__init__()
         super().__init__()

@@ -21,7 +21,13 @@ from securerag.scheduler.tasks import (
     Task,
     TaskQueue,
 )
-from securerag.utils import add_metric, delete_metric, get_metric, show_metric
+from securerag.utils import (
+    add_metric,
+    delete_metric,
+    dump_metric,
+    get_metric,
+    show_metric,
+)
 
 
 class Dispatcher:
@@ -51,43 +57,105 @@ class Dispatcher:
     def registry_request_source(self, source: RequestSource):
         self.request_source = source
 
-    def native_endpoint_loop(self, enable_offloading=True):
+    def endpoint_loop_baseline(
+        self, service: LocalEncoderDecoderService, enable_offloading=False
+    ):
         task_queue = TaskQueue()
         batch_size = 1
+        stub = None
         if enable_offloading:
-            port = 8083
-        else:
-            port = 8082
-        channel = grpc.insecure_channel(
-            f"localhost:{port}",
-            options=[
-                ("grpc.max_receive_message_length", -1),
-                ("grpc.max_send_message_length", -1),
-            ],
-        )
-        stub = messages_pb2_grpc.GenerateServiceStub(channel)
+            port = 8081
+            channel = grpc.insecure_channel(
+                f"localhost:{port}",
+                options=[
+                    ("grpc.max_receive_message_length", -1),
+                    ("grpc.max_send_message_length", -1),
+                ],
+            )
+            stub = messages_pb2_grpc.MetricServiceStub(channel)
+            stub.ClearMetric(empty_pb2.Empty())
+            stub = messages_pb2_grpc.GenerateServiceStub(channel)
         if self.request_source is None:
             print("self.request_source must be registred")
             return
+        start_time = time.time()
         while self.finished_size < self.load_size:
             reqs = self.request_source.arrive_requests()
-            task_queue += [Task.create_native_task_from_request(req) for req in reqs]
+            if not enable_offloading:
+                task_queue += [
+                    Task.create_native_task_from_request(req) for req in reqs
+                ]
+            else:
+                task_queue += [Task.create_task_from_request(req) for req in reqs]
             batch = task_queue[:batch_size]
             for task in batch:
                 task_queue.remove(task)
             if len(batch) == 0:
                 continue
-            batch_task = BatchGenerateTask().add_tasks(batch)
-            batch_task.rpc_execute(stub, enable_offloading)
-            batch_task.future.result()
-            for task in batch_task.post_process():
+            if enable_offloading:
+                gpu_batch = [x[0] for x in batch if x[0] is not None]
+                batch = [x[1] for x in batch if x[1] is not None]
+            if enable_offloading and len(gpu_batch) > 0:
+                gpu_batch_task = BatchContinueEncoderDecoderTask().add_tasks(gpu_batch)
+                gpu_batch_task.rpc_execute(stub)
+            if enable_offloading and (len(batch) == 0):
+                continue
+            service.ExecuteBatchEncoderTask(batch)
+            now = time.time()
+            for task in batch:
+                task.is_finished = True
                 arrive_time = task.request.arrive_time
                 finish_time = task.request.finish_time = time.time()
-                add_metric("LATENCY", finish_time - arrive_time)
-                add_metric("finished_request", 1)
+                add_metric("LATENCY_ENCODER_TEE", time.time() - arrive_time)
+                add_metric("finished_encoder_tee", 1)
+                arrive_time = task.request.arrive_time
+                task.request.first_token_time = now
+            while not all(task.check_dep() for task in batch):
+                if enable_offloading and len(gpu_batch) > 0:
+                    gpu_batch_task.future.result()
+                    tasks = gpu_batch_task.post_process()
+                    if tasks is None:
+                        continue
+                    for task in tasks:
+                        arrive_time = task.request.arrive_time
+                        finish_time = task.request.finish_time = time.time()
+                        task.is_finished = True
+                        print(
+                            f"question: {task.input.get('question')}, answer: {task.output.get('text_ans')}"
+                        )
+                        add_metric("LATENCY_GPU", finish_time - arrive_time)
+                        add_metric("finished_request_gpu", 1)
+            batch = [Task.create_decoder_task(task, new_task=False) for task in batch]
+            now = time.time()
+            for task in batch:
+                ttft_time = task.request.first_token_time
+                add_metric("SYNC_TEE", now - ttft_time)
+                arrive_time = task.request.arrive_time
+                ttft = task.request.first_token_time = now - arrive_time
+                add_metric("TTFT_TEE", ttft)
+                if ttft < self.TTFT_SLO:
+                    add_metric("TTFT_SLO_TEE", 1)
+            service.ExecuteBatchDecoderTask(batch)
+            for task in batch:
+                arrive_time = task.request.arrive_time
+                finish_time = task.request.finish_time = time.time()
+                tpot_sum = finish_time - arrive_time - task.request.first_token_time
+                task.is_finished = True
+                print(
+                    f"question: {task.input.get('question')}, answer: {task.output.get('text_ans')}"
+                )
+                add_metric("LATENCY_TEE", finish_time - arrive_time)
+                add_metric("TPOT_TEE", tpot_sum / len(task.output.get("tokens")))
+                add_metric("TOKENS_TEE", len(task.output.get("tokens")))
+                add_metric("finished_request_tee", 1)
+                add_metric("FINISH_TIME_TEE", time.time() - start_time)
+                if len(get_metric("finished_request_tee")) == self.load_size:
+                    type = "offloading" if enable_offloading else "native"
+                    name = f"tmp/{type}_request{self.request_source.request_per_second}_threshold07.json"
+                    dump_metric(name)
             show_metric()
 
-    def endpoint_loop_thread(self, service: LocalEncoderDecoderService):
+    def endpoint_loop(self, service: LocalEncoderDecoderService):
         if self.request_source is None:
             print("self.request_source must be registred")
             return
@@ -191,8 +259,11 @@ class Dispatcher:
                         )
                         add_metric("TOKENS_TEE", len(task.output.get("tokens")))
                         add_metric("finished_request_tee", 1)
-                        if len(get_metric("finished_request_tee")) == 62:
-                            add_metric("FINISH_TIME_TEE", time.time() - start_time)
+                        add_metric("FINISH_TIME_TEE", time.time() - start_time)
+                        if len(get_metric("finished_request_tee")) == self.load_size:
+                            dump_metric(
+                                f"tmp/sched_request{self.request_source.request_per_second}_threshold07.json"
+                            )
                     show_metric()
 
                 for batch in decoder_queue:
@@ -226,141 +297,3 @@ class Dispatcher:
             gpu()
             next(tee_event)
             gpu_post()
-
-    def endpoint_loop(self):
-        if self.request_source is None:
-            print("self.request_source must be registred")
-            return
-        tee_event = self.tee_loop()
-        gpu_event = self.gpu_loop()
-
-        while self.finished_size < self.load_size:
-            # disaggregate request
-            reqs = self.request_source.arrive_requests()
-            if len(reqs) > 0:
-                add_metric("arrived_request_size", len(reqs))
-            for req in reqs:
-                pub, pri = Task.create_task_from_request(req)
-                if pub is not None:
-                    self.gpu_encoder_task_queue.append(pub)
-                if pri is not None:
-                    self.tee_encoder_task_queue.append(pri)
-            # submit batch task
-            next(gpu_event)
-            next(tee_event)
-            # collect result and check status
-            for batch in self.rpc_execute_batch_task_queue:
-                result = batch.post_process()
-                if result is None:
-                    continue
-                self.rpc_execute_batch_task_queue.remove(batch)
-                if type(batch) is BatchEncoderTask:
-                    tasks = result
-                    for task in tasks:
-                        task = Task.create_decoder_task(task)
-                        if task.env_type == "TEE":
-                            self.tee_decoder_task_queue.append(task)
-                        elif task.env_type == "GPU":
-                            self.gpu_decoder_task_queue.append(task)
-                elif type(batch) is BatchDecoderTask:
-                    tasks = result
-                    for task in tasks:
-                        arrive_time = task.request.arrive_time
-                        finish_time = task.request.finish_time = time.time()
-                        if task.env_type == "GPU":
-                            add_metric("LATENCY_GPU", finish_time - arrive_time)
-                            add_metric("finished_request_gpu", 1)
-                        elif task.env_type == "TEE":
-                            add_metric("LATENCY_TEE", finish_time - arrive_time)
-                            add_metric("finished_request_tee", 1)
-                show_metric()
-                print(
-                    f"te: {len(self.tee_encoder_task_queue)}, td: {len(self.tee_decoder_task_queue)}, ge: {len(self.gpu_encoder_task_queue)}, gd: {len(self.gpu_decoder_task_queue)}, rpc: {len(self.rpc_execute_batch_task_queue)}"
-                )
-
-    def tee_loop(self):
-        port = self.tee_service_port
-        channel = grpc.insecure_channel(
-            f"localhost:{port}",
-            options=[
-                ("grpc.max_receive_message_length", -1),
-                ("grpc.max_send_message_length", -1),
-            ],
-        )
-        encoder_stub = messages_pb2_grpc.EncoderServiceStub(channel)
-        decoder_stub = messages_pb2_grpc.DecoderServiceStub(channel)
-
-        def do_tee_loop():
-            # disaggregate iteration
-            encoder_task_waiting_time = self.tee_encoder_task_queue.total_waiting_time()
-            decoder_task_waiting_time = self.tee_decoder_task_queue.total_waiting_time()
-
-            # if encoder_task_waiting_time >= decoder_task_waiting_time:
-            if decoder_task_waiting_time == 0:
-                # schedule request priority
-                tasks = self.tee_encoder_task_queue.pop_earliest_tasks(
-                    self.tee_encoder_batch_size
-                )
-                if len(tasks) == 0:
-                    return
-                batch = BatchEncoderTask().add_tasks(tasks)
-                batch.rpc_execute(encoder_stub)
-                self.rpc_execute_batch_task_queue.append(batch)
-            else:
-                # schedule request priority
-                tasks = self.tee_decoder_task_queue.pop_earliest_tasks(
-                    self.tee_decoder_batch_size, need_dependency=True
-                )
-                if len(tasks) == 0:
-                    return
-                batch = BatchDecoderTask().add_tasks(tasks)
-                batch.rpc_execute(decoder_stub)
-                self.rpc_execute_batch_task_queue.append(batch)
-
-        while self.running:
-            do_tee_loop()
-            yield
-
-    def gpu_loop(self):
-        port = self.gpu_service_port
-        channel = grpc.insecure_channel(
-            f"localhost:{port}",
-            options=[
-                ("grpc.max_receive_message_length", -1),
-                ("grpc.max_send_message_length", -1),
-            ],
-        )
-        encoder_stub = messages_pb2_grpc.EncoderServiceStub(channel)
-        decoder_stub = messages_pb2_grpc.DecoderServiceStub(channel)
-
-        def do_gpu_loop():
-            # disaggregate iteration
-            encoder_task_waiting_time = self.gpu_encoder_task_queue.total_waiting_time()
-            decoder_task_waiting_time = self.gpu_decoder_task_queue.total_waiting_time()
-
-            # if encoder_task_waiting_time >= decoder_task_waiting_time:
-            if decoder_task_waiting_time == 0:
-                # schedule request priority
-                tasks = self.gpu_encoder_task_queue.pop_earliest_tasks(
-                    self.gpu_encoder_batch_size
-                )
-                if len(tasks) == 0:
-                    return
-                batch = BatchEncoderTask().add_tasks(tasks)
-                batch.rpc_execute(encoder_stub)
-                self.rpc_execute_batch_task_queue.append(batch)
-            else:
-                # schedule request priority
-                tasks = self.gpu_decoder_task_queue.pop_earliest_tasks(
-                    self.gpu_decoder_batch_size, need_dependency=True
-                )
-                if len(tasks) == 0:
-                    return
-                batch = BatchDecoderTask().add_tasks(tasks)
-                batch.rpc_execute(decoder_stub)
-                self.rpc_execute_batch_task_queue.append(batch)
-
-        while self.running:
-            do_gpu_loop()
-            yield
-            yield

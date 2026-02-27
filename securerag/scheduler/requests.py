@@ -30,9 +30,7 @@ class LocalRequestSource(RequestSource):
         self.dataset = None
         self.curr = 0
         self.lasttime = time.time()
-        self.request_per_second = 1
-
-        self.gen = self.private_passage_ratio_generator()
+        self.request_per_second = 1.75
 
     def registry_source(self, path, config):
         datas = data.load(path=path, size=config.load_size)
@@ -47,29 +45,31 @@ class LocalRequestSource(RequestSource):
             self.lasttime = time.time()
         data_size = len(self.dataset)
 
-        # info(f"now: {now}, interval: {interval}, request_size: {request_size}.")
-
         output = []
         while self.curr < data_size and request_size > 0:
             req = Request()
-            req.arrive_time = now
             req.input_data = self.dataset[self.curr]
-            n_passages = len(req.input_data["passages"])
-            req.private_passage_size = int(next(self.gen) * n_passages)
+            req = self.request_load_post_process(req)
+            req.arrive_time = time.time()
             output.append(req)
             request_size -= 1
             self.curr += 1
 
         return output
 
-    def private_passage_ratio_generator(self):  # -> Any:
-        curr = 0
+    def request_load_post_process(self, req):  # -> Any:
+        n_passages = len(req.input_data["passages"])
+        siz = (
+            min(random.randint(5, 10), n_passages)
+            if random.random() < 0.8
+            else min(random.randint(20, 50), n_passages)
+        )
+        req.private_passage_size = (
+            random.randint(0, int(siz * 0.6))
+            if random.random() < 0.9
+            else random.randint(int(siz * 0.6), siz)
+        )
+        req.input_data["passages"] = req.input_data["passages"][:siz]
+        req.input_data["scores"] = req.input_data["scores"][:siz]
 
-        while True:
-            ratio = 0
-            if curr % 10 == 0:
-                ratio = random.random()
-            else:
-                ratio = random.random()
-            curr += 1
-            yield ratio
+        return req

@@ -30,68 +30,39 @@ class TestUnit(TestConfigLoggerBase):
             for req in reqs:
                 print(req.arrive_time)
 
-    def test_tee_rpc_service(self):
-        service = EncoderDecoderSerivce(self.config, "TEE")
-        service.start_service()
-
     def test_gpu_rpc_service(self):
         service = EncoderDecoderSerivce(self.config, "GPU")
         service.start_service(worker_num=1)
 
-    def test_native_rpc_service(self):
-        service = EncoderDecoderSerivce(self.config, "NATIVE")
-        service.start_service()
-
-    def test_offloading_rpc_service(self):
-        service = EncoderDecoderSerivce(self.config, "OFFLAODING")
-        service.start_service()
-
     def test_offloading_rpc_client(self):
-        port = 8083
-        with grpc.insecure_channel(f"localhost:{port}") as channel:
-            stub = messages_pb2_grpc.MetricServiceStub(channel)
-            stub.ClearMetric(empty_pb2.Empty())
-
-        self.config.load_size = 64
-        path = "data/open_domain_data/NQ/dev_with_scores.json"
-        local_request = LocalRequestSource()
-        local_request.registry_source(path, self.config)
-
-        dispatcher = Dispatcher(self.config)
-        dispatcher.registry_request_source(local_request)
-        dispatcher.native_endpoint_loop()
-
-    def test_native_rpc_client(self):
-        port = 8082
-        with grpc.insecure_channel(f"localhost:{port}") as channel:
-            stub = messages_pb2_grpc.MetricServiceStub(channel)
-            stub.ClearMetric(empty_pb2.Empty())
-
-        self.config.load_size = 64
-        path = "data/open_domain_data/NQ/dev_with_scores.json"
-        local_request = LocalRequestSource()
-        local_request.registry_source(path, self.config)
-
-        dispatcher = Dispatcher(self.config)
-        dispatcher.registry_request_source(local_request)
-        dispatcher.native_endpoint_loop(enable_offloading=False)
-
-    def test_thread_rpc_client(self):
         service = LocalEncoderDecoderService(self.config, "TEE")
 
-        self.config.load_size = 64
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         local_request = LocalRequestSource()
         local_request.registry_source(path, self.config)
 
         dispatcher = Dispatcher(self.config)
         dispatcher.registry_request_source(local_request)
-        dispatcher.endpoint_loop_thread(service)
+        dispatcher.endpoint_loop_baseline(service, enable_offloading=True)
 
-    def test_adaptive_passage_selection(self):
-        public_scores = torch.Tensor([60]) / 100
-        private_scores = torch.Tensor([80, 90, 85]) / 100
-        ret = FusionAggregate.adaptive_passage_selection(
-            public_scores, private_scores, 1
-        )
-        print(ret)
+    def test_native_rpc_client(self):
+        service = LocalEncoderDecoderService(self.config, "TEE")
+
+        path = "data/open_domain_data/NQ/dev_with_scores.json"
+        local_request = LocalRequestSource()
+        local_request.registry_source(path, self.config)
+
+        dispatcher = Dispatcher(self.config)
+        dispatcher.registry_request_source(local_request)
+        dispatcher.endpoint_loop_baseline(service, enable_offloading=False)
+
+    def test_sched_rpc_client(self):
+        service = LocalEncoderDecoderService(self.config, "TEE")
+
+        path = "data/open_domain_data/NQ/dev_with_scores.json"
+        local_request = LocalRequestSource()
+        local_request.registry_source(path, self.config)
+
+        dispatcher = Dispatcher(self.config)
+        dispatcher.registry_request_source(local_request)
+        dispatcher.endpoint_loop(service)
