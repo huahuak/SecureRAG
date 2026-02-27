@@ -30,7 +30,7 @@ class LocalRequestSource(RequestSource):
         self.dataset = None
         self.curr = 0
         self.lasttime = time.time()
-        self.request_per_second = 32
+        self.request_per_second = 1
 
         self.gen = self.private_passage_ratio_generator()
 
@@ -70,6 +70,6 @@ class LocalRequestSource(RequestSource):
             if curr % 10 == 0:
                 ratio = random.random()
             else:
-                ratio = random.random() / 10
+                ratio = random.random()
             curr += 1
             yield ratio

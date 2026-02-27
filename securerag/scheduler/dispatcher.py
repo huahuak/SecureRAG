@@ -46,6 +46,8 @@ class Dispatcher:
         self.gpu_encoder_batch_size = 6
         self.gpu_decoder_batch_size = 6
 
+        self.TTFT_SLO = 3.5
+
     def registry_request_source(self, source: RequestSource):
         self.request_source = source
 
@@ -165,19 +167,31 @@ class Dispatcher:
                     ]
                     now = time.time()
                     for task in batch:
-                        ttft = task.request.first_token_time
-                        add_metric("SYNC_TEE", now - ttft)
+                        ttft_time = task.request.first_token_time
+                        add_metric("SYNC_TEE", now - ttft_time)
+                        arrive_time = task.request.arrive_time
+                        ttft = task.request.first_token_time = now - arrive_time
+                        add_metric("TTFT_TEE", ttft)
+                        if ttft < self.TTFT_SLO:
+                            add_metric("TTFT_SLO_TEE", 1)
                     service.ExecuteBatchDecoderTask(batch)
                     for task in batch:
                         arrive_time = task.request.arrive_time
                         finish_time = task.request.finish_time = time.time()
+                        tpot_sum = (
+                            finish_time - arrive_time - task.request.first_token_time
+                        )
                         task.is_finished = True
                         print(
                             f"question: {task.input.get('question')}, answer: {task.output.get('text_ans')}"
                         )
                         add_metric("LATENCY_TEE", finish_time - arrive_time)
+                        add_metric(
+                            "TPOT_TEE", tpot_sum / len(task.output.get("tokens"))
+                        )
+                        add_metric("TOKENS_TEE", len(task.output.get("tokens")))
                         add_metric("finished_request_tee", 1)
-                        if len(get_metric("finished_request_tee")) == 55:
+                        if len(get_metric("finished_request_tee")) == 62:
                             add_metric("FINISH_TIME_TEE", time.time() - start_time)
                     show_metric()
 
