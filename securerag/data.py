@@ -102,7 +102,7 @@ class BatchData:
     private_scores: Optional = None
 
 
-def tokenizer_encode_batch(batch_text_passages, tokenizer, max_length):
+def tokenizer_encode_batch2(batch_text_passages, tokenizer, max_length):
     passage_ids, passage_masks = [], []
     for k, text_passages in enumerate(batch_text_passages):
         p = tokenizer.batch_encode_plus(
@@ -114,6 +114,24 @@ def tokenizer_encode_batch(batch_text_passages, tokenizer, max_length):
         )
         passage_ids.append(p["input_ids"])
         passage_masks.append(p["attention_mask"])
+
+    passage_ids = torch.cat(passage_ids, dim=0)
+    passage_masks = torch.cat(passage_masks, dim=0)
+    return passage_ids, passage_masks.bool()
+
+
+def tokenizer_encode_batch(batch_text_passages, tokenizer, max_length):
+    passage_ids, passage_masks = [], []
+    for k, text_passages in enumerate(batch_text_passages):
+        p = tokenizer.batch_encode_plus(
+            text_passages,
+            max_length=max_length,
+            pad_to_max_length=True,
+            return_tensors="pt",
+            truncation=True,
+        )
+        passage_ids.append(p["input_ids"][None])
+        passage_masks.append(p["attention_mask"][None])
 
     passage_ids = torch.cat(passage_ids, dim=0)
     passage_masks = torch.cat(passage_masks, dim=0)

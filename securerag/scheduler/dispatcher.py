@@ -4,6 +4,7 @@ from threading import Lock
 from urllib import request
 
 import grpc
+import numpy as np
 import psutil
 import torch
 from google.protobuf import empty_pb2
@@ -20,7 +21,7 @@ from securerag.scheduler.tasks import (
     Task,
     TaskQueue,
 )
-from securerag.utils import add_metric, get_metric, show_metric
+from securerag.utils import add_metric, delete_metric, get_metric, show_metric
 
 
 class Dispatcher:
@@ -42,8 +43,8 @@ class Dispatcher:
 
         self.tee_encoder_batch_size = 4
         self.tee_decoder_batch_size = 4
-        self.gpu_encoder_batch_size = 4
-        self.gpu_decoder_batch_size = 4
+        self.gpu_encoder_batch_size = 6
+        self.gpu_decoder_batch_size = 6
 
     def registry_request_source(self, source: RequestSource):
         self.request_source = source
@@ -114,18 +115,6 @@ class Dispatcher:
             batch_task = BatchContinueEncoderDecoderTask().add_tasks(batch)
             batch_task.rpc_execute(stub)
             gpu_post_queue.append(batch_task)
-            return
-            batch_task.future.result()
-            for task in batch_task.post_process():
-                arrive_time = task.request.arrive_time
-                finish_time = task.request.finish_time = time.time()
-                task.is_finished = True
-                print(
-                    f"question: {task.input.get('question')}, answer: {task.output.get('text_ans')}"
-                )
-                add_metric("LATENCY_GPU", finish_time - arrive_time)
-                add_metric("finished_request_gpu", 1)
-            show_metric()
             return
 
         @Profiler("function_gpu_post")

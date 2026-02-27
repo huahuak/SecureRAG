@@ -101,64 +101,75 @@ class SecureRAG(nn.Module):
                 # pri_fusion_scores = doc_scores_all.gather(dim=1, index=idx)
                 # pri_fusion_size = eta_size
 
-                eta_size = int(total_size * self.topk)
-                eta_size = max(eta_size, 1)
-                top_eta_scores, top_eta_idx = doc_scores_all.topk(dim=-1, k=eta_size)
-                aux_zeros = torch.zeros_like(top_eta_scores)
-                candidate_pub_scores = top_eta_scores.where(
-                    top_eta_idx < c_size, aux_zeros
-                )
-                presum_scores = top_eta_scores.cumsum(dim=1)
-                alpha = 1 / (self.eta * total_size)
-                presum_threshold = torch.full_like(presum_scores, alpha).cumsum(1)
-                condition = candidate_pub_scores.sum(-1).unsqueeze(1) < (
-                    presum_scores - presum_threshold
-                )
-                pri_fusion_size = (
-                    (presum_scores - presum_threshold)
-                    .where(condition, aux_zeros)
-                    .argmax(dim=1)
-                    .float()
-                    .max()
-                    .item()
-                )
-                pri_fusion_size = round(pri_fusion_size + 1)  # plus 1 to get length
-                pri_fusion_size = max(pri_fusion_size, 1)
-                pri_fusion_scores, idx = doc_scores_all.topk(dim=-1, k=pri_fusion_size)
-
-                # def fn(public_scores, private_scores):
-                #     all_scores: torch.Tensor = torch.cat(
-                #         [public_scores, private_scores], dim=0
-                #     )
-                #     c_size = public_scores.size(0)
-                #     cp_size = private_scores.size(0)
-                #     total_size = c_size + cp_size
-
-                #     alpha = public_scores.mean() + (
-                #         (public_scores.max() - public_scores.mean()) / self.eta
-                #     )
-                #     idx = torch.where(public_scores > alpha)
-                #     partial_scores = public_scores[idx]
-                #     if abs(
-                #         private_scores.sum() - public_scores.sum()
-                #     ) < partial_scores.sum() * 1.5 * (total_size / max(1, c_size)):
-                #         return idx, all_scores[idx]
-                #     else:
-                #         return torch.Tensor(), None
-
-                # result_idx = []
-                # for p, r in zip(public_scores, private_scores):
-                #     idx, _ = fn(p, r)
-                #     result_idx.append(idx[0])
-                # result_idx.pad()
-                # maxlen = max([x.size(0) for x in result_idx])
-                # idx = torch.stack(
-                #     [
-                #         functional.pad(x, (0, maxlen - x.size(0)), value=0)
-                #         for x in result_idx
-                #     ]
+                # eta_size = int(total_size * self.topk)
+                # eta_size = max(eta_size, 1)
+                # top_eta_scores, top_eta_idx = doc_scores_all.topk(dim=-1, k=eta_size)
+                # aux_zeros = torch.zeros_like(top_eta_scores)
+                # candidate_pub_scores = top_eta_scores.where(
+                #     top_eta_idx < c_size, aux_zeros
                 # )
-                # pri_fusion_scores = doc_scores_all.gather(dim=1, index=idx)
+                # presum_scores = top_eta_scores.cumsum(dim=1)
+                # alpha = 1 / (self.eta * total_size)
+                # presum_threshold = torch.full_like(presum_scores, alpha).cumsum(1)
+                # condition = candidate_pub_scores.sum(-1).unsqueeze(1) < (
+                #     presum_scores - presum_threshold
+                # )
+                # pri_fusion_size = (
+                #     (presum_scores - presum_threshold)
+                #     .where(condition, aux_zeros)
+                #     .argmax(dim=1)
+                #     .float()
+                #     .max()
+                #     .item()
+                # )
+                # pri_fusion_size = round(pri_fusion_size + 1)  # plus 1 to get length
+                # pri_fusion_size = max(pri_fusion_size, 1)
+                # pri_fusion_scores, idx = doc_scores_all.topk(dim=-1, k=pri_fusion_size)
+
+                def fn(public_scores, private_scores):
+                    all_scores: torch.Tensor = torch.cat(
+                        [public_scores, private_scores], dim=0
+                    )
+                    c_size = public_scores.size(0)
+                    cp_size = private_scores.size(0)
+                    total_size = c_size + cp_size
+
+                    alpha = public_scores.mean() + (
+                        (public_scores.max() - public_scores.mean()) / self.eta
+                    )
+                    idx = torch.where(public_scores > alpha)
+                    partial_scores = public_scores[idx]
+                    if abs(
+                        private_scores.sum() - public_scores.sum()
+                    ) < partial_scores.sum() * 1.5 * (total_size / max(1, c_size)):
+                        idx = torch.cat(
+                            [
+                                idx[0],
+                                torch.arange(
+                                    public_scores.size(0), all_scores.size(0)
+                                ).to(idx[0].device),
+                            ],
+                            dim=0,
+                        )
+                    else:
+                        idx = torch.arange(
+                            public_scores.size(0), all_scores.size(0)
+                        ).to(idx[0].device)
+                    return all_scores[idx], idx
+
+                result_idx = []
+                for p, r in zip(public_scores, private_scores):
+                    _, idx = fn(p, r)
+                    result_idx.append(idx)
+                maxlen = max([x.size(0) for x in result_idx])
+                idx = torch.stack(
+                    [
+                        functional.pad(x, (0, maxlen - x.size(0)), value=0)
+                        for x in result_idx
+                    ]
+                )
+                pri_fusion_scores = doc_scores_all.gather(dim=1, index=idx)
+                pri_fusion_size = maxlen * pri_fusion_scores.size(0)
 
             # algor 2
             elif self.enable_topk:

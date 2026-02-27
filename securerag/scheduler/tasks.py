@@ -15,7 +15,12 @@ from torch.nn.functional import pad
 from transformers.file_utils import ModelOutput
 
 from securerag.config import Config
-from securerag.data import BatchData, SecureRAG4T5Collator, tokenizer_encode_batch
+from securerag.data import (
+    BatchData,
+    SecureRAG4T5Collator,
+    tokenizer_encode_batch,
+    tokenizer_encode_batch2,
+)
 from securerag.models import SecureRAG
 from securerag.models.fid import FiDT5
 from securerag.profiler import Profiler
@@ -460,7 +465,7 @@ class EncoderDecoderSerivce(
                     for t in example["passages"]
                 ]
             )
-        passage_ids, passage_masks = tokenizer_encode_batch(
+        passage_ids, passage_masks = tokenizer_encode_batch2(
             passages, self.tokenizer, self.text_maxlength
         )
         return BatchData(

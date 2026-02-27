@@ -69,7 +69,7 @@ def dump_metric(filepath):
                 for k, v in metric_map.items()
             },
         }
-        json.dump(data, file, indent=2)
+        json.dump(data, file, indent=2, default=str)
 
 
 def show_metric():

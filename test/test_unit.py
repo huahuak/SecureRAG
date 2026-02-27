@@ -36,7 +36,7 @@ class TestUnit(TestConfigLoggerBase):
 
     def test_gpu_rpc_service(self):
         service = EncoderDecoderSerivce(self.config, "GPU")
-        service.start_service()
+        service.start_service(worker_num=1)
 
     def test_native_rpc_service(self):
         service = EncoderDecoderSerivce(self.config, "NATIVE")

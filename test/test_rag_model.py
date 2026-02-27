@@ -70,7 +70,7 @@ class TestModelBase(TestConfigLoggerBase):
 
         # for auto eval
         self.k_values = np.linspace(5, 15, 3, dtype=int)
-        self.eta_values = np.linspace(1.5, 2.5, 5)
+        self.eta_values = np.linspace(2.5, 10, 4)
         self.d_values = np.round(np.linspace(0.1, 0.9, 5), 1)
 
         if ENABLE_PROFILER:
@@ -785,26 +785,31 @@ class TestAccuracyForFiD(TestFIDT5):
         self.config.load_size = 1000
 
         super().setUp()
+        path = "data/open_domain_data/NQ/dev_with_scores.json"
+        datas = data.load(path=path, size=self.config.load_size)
+        self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
 
         self.original_model = self.model
         self.mlo_model = PAMLFiDT5(copy.deepcopy(self.model))
         self.mlo_model.set_private_ratio(0.5)
         self.split_agg = SecureRAG(copy.deepcopy(self.model), enable_algorithm=False)
-        self.split_agg.set_eta(2.5)
+        self.split_agg.set_eta(5)
         self.split_agg_with_adpatpf = SecureRAG(
             copy.deepcopy(self.model), enable_algorithm=True
         )
-        self.split_agg_with_adpatpf.set_eta(2.5)
+        self.split_agg_with_adpatpf.set_eta(5)
 
     def test_accuracy(self):
-        # securerag.eval.evaluate(
-        #     model=self.original_model,
-        #     dataset=self.dataset,
-        #     dataloader=self.data_loader,
-        #     tokenizer=self.tokenizer,
-        #     cfg=self.config,
-        # )
-        #   show_metric()
+        securerag.eval.evaluate(
+            model=self.original_model,
+            dataset=self.dataset,
+            dataloader=self.data_loader,
+            tokenizer=self.tokenizer,
+            cfg=self.config,
+        )
+        show_metric()
+        dump_metric("tmp/accuracy(original-k10).json")
+
         # securerag.eval.evaluate(
         #     model=self.mlo_model,
         #     dataset=self.dataset,
@@ -835,15 +840,20 @@ class TestAccuracyForFiD(TestFIDT5):
                     cfg=self.config,
                 )
                 show_metric()
+                dump_metric("tmp/accuray(eta5,k10).json")
 
 
 class TestEtaForFiD(TestFIDT5):
     def setUp(self):
         self.config.n_context = 10  # k
         self.config.batch_size = 16
-        self.config.load_size = 100
+        self.config.load_size = 1000
 
         super().setUp()
+
+        path = "data/open_domain_data/NQ/dev_with_scores.json"
+        datas = data.load(path=path, size=self.config.load_size)
+        self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
 
         self.split_agg_with_adpatpf = SecureRAG(
             copy.deepcopy(self.model), enable_algorithm=True
@@ -860,6 +870,8 @@ class TestEtaForFiD(TestFIDT5):
                     cfg=self.config,
                 )
             show_metric()
+            dump_metric(f"tmp/{name}.json")
+            delete_metric()
 
         for eta in self.eta_values:
             self.split_agg_with_adpatpf.set_eta(eta)
@@ -876,7 +888,7 @@ class TestEtaForFiD(TestFIDT5):
                     ),
                 )
                 do_eval(
-                    f"sa_pf_fidt5_eta_{eta}",
+                    f"sa_pf_fidt5_eta_{eta}_K_{10}",
                     self.split_agg_with_adpatpf,
                     self.dataloader,
                 )
