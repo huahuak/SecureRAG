@@ -153,6 +153,7 @@ class Dispatcher:
                     type = "offloading" if enable_offloading else "native"
                     name = f"tmp/{type}_request{self.request_source.request_per_second}_threshold07.json"
                     dump_metric(name)
+                    return
             show_metric()
 
     def endpoint_loop(self, service: LocalEncoderDecoderService):
