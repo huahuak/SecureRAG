@@ -273,6 +273,7 @@ class Dispatcher:
                             dump_metric(
                                 f"tmp/sched_request{self.request_source.request_per_second}_threshold07.json"
                             )
+                            exit(1)
                     show_metric()
 
                 for batch in decoder_queue:
@@ -297,8 +298,9 @@ class Dispatcher:
             if len(reqs) > 0:
                 add_metric("arrived_request_size", len(reqs))
             while reqs:
-                if self.tee_rpc_instance is not None and (
-                    len(self.tee_encoder_task_queue) != 0 or len(reqs) > 1
+                if (
+                    self.tee_rpc_instance is not None
+                    and len(self.tee_encoder_task_queue) != 0
                 ):
                     reqs = self.tee_rpc_instance.load_balance(reqs)
                 if len(reqs) == 0:

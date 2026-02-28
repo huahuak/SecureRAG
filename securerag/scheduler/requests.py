@@ -43,7 +43,7 @@ class RequestSource:
 
 class RpcRequestSource(RequestSource, GenerateService, MetricService):
     def __init__(self, port):
-        self.max_queue_size = 3
+        self.max_queue_size = 1
         self.queue = queue.Queue(self.max_queue_size)
         self.port = port
 
@@ -97,7 +97,7 @@ class LocalRequestSource(RequestSource):
         self.dataset = None
         self.curr = 0
         self.lasttime = time.time()
-        self.request_per_second = 1
+        self.request_per_second = 2
 
     def registry_source(self, path, config):
         datas = data.load(path=path, size=config.load_size)
