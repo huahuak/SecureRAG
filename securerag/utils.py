@@ -1,5 +1,6 @@
 import json
 import logging
+import signal
 import sys
 from typing import List
 
@@ -38,6 +39,15 @@ def redirectPrintToLogger():
             pass
 
     sys.stdout = PrintToLogger(logger)
+
+
+class ProcessManager:
+    def registry_interrupt(process_name):
+        def handler(sig, frame):
+            dump_metric(f"tmp/{process_name}.json")
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, handler)
 
 
 metric_map = {}

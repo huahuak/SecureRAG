@@ -37,5 +37,5 @@ class Config:
         self.parser.add_argument("--private_passage_ratio", type=float, default=0.5)
 
     def __add_service_options(self):
-        self.parser.add_argument("--tee_service_port", type=str, default="8080")
         self.parser.add_argument("--gpu_service_port", type=str, default="8081")
+        self.parser.add_argument("--tee_service_port", type=str, default="8082")

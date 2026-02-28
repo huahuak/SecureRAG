@@ -54,8 +54,13 @@ class Dispatcher:
 
         self.TTFT_SLO = 3.5
 
+        self.tee_rpc_instance: WeakTEE = None
+
     def registry_request_source(self, source: RequestSource):
         self.request_source = source
+
+    def registry_tee_rpc_instance(self, instance):
+        self.tee_rpc_instance = instance
 
     def endpoint_loop_baseline(
         self, service: LocalEncoderDecoderService, enable_offloading=False
@@ -177,7 +182,7 @@ class Dispatcher:
 
         gpu_post_queue = []
 
-        @Profiler("function_gpu")
+        # @Profiler("function_gpu")
         def gpu():
             batch = self.gpu_encoder_task_queue[: self.gpu_encoder_batch_size]
             self.gpu_encoder_task_queue[:] = self.gpu_encoder_task_queue[len(batch) :]
@@ -188,7 +193,7 @@ class Dispatcher:
             gpu_post_queue.append(batch_task)
             return
 
-        @Profiler("function_gpu_post")
+        # @Profiler("function_gpu_post")
         def gpu_post():
             for batch_task in gpu_post_queue:
                 tasks = batch_task.post_process()
@@ -260,7 +265,10 @@ class Dispatcher:
                         )
                         add_metric("TOKENS_TEE", len(task.output.get("tokens")))
                         add_metric("finished_request_tee", 1)
-                        add_metric("FINISH_TIME_TEE", time.time() - start_time)
+                        add_metric(
+                            "FINISH_TIME_TEE",
+                            time.time() - max(get_metric("start_time")),
+                        )
                         if len(get_metric("finished_request_tee")) == self.load_size:
                             dump_metric(
                                 f"tmp/sched_request{self.request_source.request_per_second}_threshold07.json"
@@ -282,14 +290,20 @@ class Dispatcher:
                 yield
 
         tee_event = tee_loop()
-        start_time = time.time()
+        add_metric("start_time", time.time())
 
         while self.finished_size < self.load_size:
-            # disaggregate request
             reqs = self.request_source.arrive_requests()
             if len(reqs) > 0:
                 add_metric("arrived_request_size", len(reqs))
-            for req in reqs:
+            while reqs:
+                if self.tee_rpc_instance is not None and (
+                    len(self.tee_encoder_task_queue) != 0 or len(reqs) > 1
+                ):
+                    reqs = self.tee_rpc_instance.load_balance(reqs)
+                if len(reqs) == 0:
+                    break
+                req = reqs.pop()
                 pub, pri = Task.create_task_from_request(req)
                 if pub is not None:
                     self.gpu_encoder_task_queue.append(pub)
@@ -298,3 +312,33 @@ class Dispatcher:
             gpu()
             next(tee_event)
             gpu_post()
+
+
+class WeakTEE:
+    def __init__(self):
+        self.post = None
+        port = 8082
+        channel = grpc.insecure_channel(
+            f"localhost:{port}",
+            options=[
+                ("grpc.max_receive_message_length", -1),
+                ("grpc.max_send_message_length", -1),
+            ],
+        )
+        stub = messages_pb2_grpc.MetricServiceStub(channel)
+        stub.ClearMetric(empty_pb2.Empty())
+        self.stub = messages_pb2_grpc.GenerateServiceStub(channel)
+
+    def load_balance(self, reqs: list):
+        if len(reqs) == 0:
+            return reqs
+        if self.post is not None and not self.post.done():
+            return reqs
+        req = reqs.pop()
+        task = Task()
+        task.request = req
+        task.input = req.input_data
+        batch = BatchContinueEncoderDecoderTask().add_tasks([task])
+        batch.rpc_execute(self.stub)
+        self.post = batch.future
+        return reqs

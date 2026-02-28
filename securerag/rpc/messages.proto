@@ -44,13 +44,14 @@ message Task {
   string env_type = 1;
   Data input = 2;
   Data output = 3;
+  int32 private_passage_size = 4;
 };
 
 message Request {
   repeated Task tasks = 1;
-  float max_private_ratio = 2;
 }
 
 message Response {
-  repeated Task tasks = 2;
+  repeated Task tasks = 1;
+  int32 credit  = 2;
 }

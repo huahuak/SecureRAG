@@ -1,4 +1,5 @@
 import cProfile
+import threading
 import time
 from test.test_base import TestConfigLoggerBase
 
@@ -8,13 +9,14 @@ from google.protobuf import empty_pb2
 
 from securerag.rpc import messages_pb2_grpc
 from securerag.scheduler.dependency import FusionAggregate
-from securerag.scheduler.dispatcher import Dispatcher
-from securerag.scheduler.requests import LocalRequestSource
+from securerag.scheduler.dispatcher import Dispatcher, WeakTEE
+from securerag.scheduler.requests import LocalRequestSource, RpcRequestSource
 from securerag.scheduler.tasks import (
     BatchEncoderTask,
     EncoderDecoderSerivce,
     LocalEncoderDecoderService,
 )
+from securerag.utils import ProcessManager
 
 
 class TestUnit(TestConfigLoggerBase):
@@ -32,7 +34,7 @@ class TestUnit(TestConfigLoggerBase):
 
     def test_gpu_rpc_service(self):
         service = EncoderDecoderSerivce(self.config, "GPU")
-        service.start_service(worker_num=1)
+        service.start_service(worker_num=2)
 
     def test_offloading_rpc_client(self):
         service = LocalEncoderDecoderService(self.config, "TEE")
@@ -65,4 +67,30 @@ class TestUnit(TestConfigLoggerBase):
 
         dispatcher = Dispatcher(self.config)
         dispatcher.registry_request_source(local_request)
+        dispatcher.endpoint_loop(service)
+
+    def test_multi_rpc_client(self):
+        service = LocalEncoderDecoderService(self.config, "TEE")
+        weaktee = WeakTEE()
+
+        path = "data/open_domain_data/NQ/dev_with_scores.json"
+        local_request = LocalRequestSource()
+        local_request.registry_source(path, self.config)
+
+        ProcessManager.registry_interrupt(
+            f"strong_tee10_9_request{local_request.request_per_second}"
+        )
+
+        dispatcher = Dispatcher(self.config)
+        dispatcher.registry_request_source(local_request)
+        dispatcher.registry_tee_rpc_instance(weaktee)
+        dispatcher.endpoint_loop(service)
+
+    def test_tee_instance(self):
+        ProcessManager.registry_interrupt("weak_tee10_9_request")
+        service = LocalEncoderDecoderService(self.config, "TEE")
+        rpc_request = RpcRequestSource(self.config.tee_service_port)
+        threading.Thread(target=rpc_request.start_service).start()
+        dispatcher = Dispatcher(self.config)
+        dispatcher.registry_request_source(rpc_request)
         dispatcher.endpoint_loop(service)

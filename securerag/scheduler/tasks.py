@@ -31,6 +31,7 @@ from securerag.rpc.messages_pb2_grpc import (
     EncoderService,
     EncoderServiceStub,
     GenerateService,
+    GenerateServiceStub,
     MetricService,
     add_DecoderServiceServicer_to_server,
     add_EncoderServiceServicer_to_server,
@@ -38,7 +39,8 @@ from securerag.rpc.messages_pb2_grpc import (
     add_MetricServiceServicer_to_server,
 )
 from securerag.scheduler.dependency import FusionAggregate
-from securerag.scheduler.requests import Request
+
+# from securerag.scheduler.requests import Request
 from securerag.utils import add_metric, clear_metric, delete_metric, show_metric
 
 
@@ -54,7 +56,7 @@ class Task:
     def check_dep(self):
         return self.dep is None or self.dep.resolve()
 
-    def create_native_task_from_request(req: Request):
+    def create_native_task_from_request(req):
         data = req.input_data
         input_data = {
             "index": data["index"],
@@ -71,7 +73,7 @@ class Task:
         return task
 
     @staticmethod
-    def create_task_from_request(req: Request):
+    def create_task_from_request(req):
         data = req.input_data
         private_passage_size = req.private_passage_size
         print(f"private_passage_size: {private_passage_size}")
@@ -351,11 +353,13 @@ class BatchDecoderTask(BatchTask):
 
 class BatchContinueEncoderDecoderTask(BatchTask):
 
-    def rpc_execute(self, stub: EncoderServiceStub):
+    def rpc_execute(self, stub: GenerateServiceStub):
         print(f"rpc_execute({self.get_env_type()}, Encoder)")
         rpc_tasks = []
         for task in self.tasks:
-            rpc_tasks.append(task.to_rpc_task())
+            rpc_task = task.to_rpc_task()
+            rpc_task.private_passage_size = task.request.private_passage_size
+            rpc_tasks.append(rpc_task)
         request = messages_pb2.Request(tasks=rpc_tasks)
         self.future = stub.ExecuteBatchContinueEncoderDecoderTask.future(request)
 
@@ -872,7 +876,6 @@ class EncoderDecoderSerivce(
         server.start()
         print(f"{self.type} service is running...")
         server.wait_for_termination()
-        server.wait_for_termination()
 
 
 class LocalEncoderDecoderService(EncoderDecoderSerivce):
@@ -994,4 +997,5 @@ class LocalEncoderDecoderService(EncoderDecoderSerivce):
             if tmp.output is None:
                 tmp.output = {}
             tmp.output["tokens"] = tokens
+            tmp.output["text_ans"] = text_ans
             tmp.output["text_ans"] = text_ans
