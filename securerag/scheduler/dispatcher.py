@@ -270,9 +270,15 @@ class Dispatcher:
                             time.time() - max(get_metric("start_time")),
                         )
                         if len(get_metric("finished_request_tee")) == self.load_size:
-                            dump_metric(
-                                f"tmp/sched_request{self.request_source.request_per_second}_threshold07.json"
+                            process_name = (
+                                get_metric("process_name")[0]
+                                if len(get_metric("process_name")) > 0
+                                else "unknown_process"
                             )
+                            dump_metric(f"tmp/{process_name}.json")
+                            # dump_metric(
+                            #     f"tmp/sched_request{self.request_source.request_per_second}_threshold07.json"
+                            # )
                             exit(1)
                     show_metric()
 

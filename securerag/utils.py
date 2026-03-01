@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import signal
 import sys
 from typing import List
@@ -42,11 +43,16 @@ def redirectPrintToLogger():
 
 
 class ProcessManager:
-    def registry_interrupt(process_name):
+
+    def registry_interrupt(process_name=None):
         def handler(sig, frame):
             dump_metric(f"tmp/{process_name}.json")
             sys.exit(0)
 
+        if process_name is None:
+            process_name = os.getenv("PROCESS_NAME")
+
+        add_metric("process_name", process_name)
         signal.signal(signal.SIGINT, handler)
 
 
@@ -77,6 +83,7 @@ def dump_metric(filepath):
             "statics": {
                 k + "(statics)": [np.mean(v), np.min(v), np.max(v), np.sum(v)]
                 for k, v in sorted(metric_map.items())
+                if len(v) > 0 and not isinstance(v[0], str)
             },
         }
         json.dump(data, file, indent=2, default=str)
@@ -94,5 +101,6 @@ def show_metric():
         {
             k + "(statics)": [np.mean(v), np.min(v), np.max(v), np.sum(v)]
             for k, v in sorted(metric_map.items())
+            if len(v) > 0 and not isinstance(v[0], str)
         }
     )

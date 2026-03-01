@@ -59,7 +59,7 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher.endpoint_loop_baseline(service, enable_offloading=False)
 
     def test_sched_rpc_client(self):
-        ProcessManager.registry_interrupt(self.config.process_name)
+        ProcessManager.registry_interrupt()
         service = LocalEncoderDecoderService(self.config, "TEE")
 
         path = "data/open_domain_data/NQ/dev_with_scores.json"
