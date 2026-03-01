@@ -83,7 +83,7 @@ def dump_metric(filepath):
             "statics": {
                 k + "(statics)": [np.mean(v), np.min(v), np.max(v), np.sum(v)]
                 for k, v in sorted(metric_map.items())
-                if len(v) > 0 and not isinstance(v[0], str)
+                if v is not None and len(v) > 0 and not isinstance(v[0], str)
             },
         }
         json.dump(data, file, indent=2, default=str)
@@ -101,6 +101,6 @@ def show_metric():
         {
             k + "(statics)": [np.mean(v), np.min(v), np.max(v), np.sum(v)]
             for k, v in sorted(metric_map.items())
-            if len(v) > 0 and not isinstance(v[0], str)
+            if v is not None and len(v) > 0 and not isinstance(v[0], str)
         }
     )

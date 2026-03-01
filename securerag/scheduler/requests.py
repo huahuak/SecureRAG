@@ -1,3 +1,4 @@
+import os
 import queue
 import random
 import sys
@@ -97,7 +98,7 @@ class LocalRequestSource(RequestSource):
         self.dataset = None
         self.curr = 0
         self.lasttime = time.time()
-        self.request_per_second = 2
+        self.request_per_second = 1
 
     def registry_source(self, path, config):
         datas = data.load(path=path, size=config.load_size)
