@@ -79,7 +79,7 @@ class TestUnit(TestConfigLoggerBase):
         local_request.registry_source(path, self.config)
 
         ProcessManager.registry_interrupt(
-            f"strong_tee15_4_request{local_request.request_per_second}"
+            f"strong_tee13_6_request{local_request.request_per_second}"
         )
 
         dispatcher = Dispatcher(self.config)
@@ -88,7 +88,7 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher.endpoint_loop(service)
 
     def test_tee_instance(self):
-        ProcessManager.registry_interrupt("weak_tee15_4_request")
+        ProcessManager.registry_interrupt("weak_tee13_6_request")
         service = LocalEncoderDecoderService(self.config, "TEE")
         rpc_request = RpcRequestSource(self.config.tee_service_port)
         threading.Thread(target=rpc_request.start_service, daemon=True).start()
