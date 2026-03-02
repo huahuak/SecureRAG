@@ -299,14 +299,16 @@ class Dispatcher:
         tee_event = tee_loop()
         add_metric("start_time", time.time())
 
+        reqs = []
         while self.finished_size < self.load_size:
-            reqs = self.request_source.arrive_requests()
+            reqs += self.request_source.arrive_requests()
             if len(reqs) > 0:
                 add_metric("arrived_request_size", len(reqs))
-            while reqs:
+            if len(reqs) > 0:
                 if (
                     self.tee_rpc_instance is not None
                     and len(self.tee_encoder_task_queue) != 0
+                    and len(reqs[0].input_data["passages"]) < 10
                 ):
                     reqs = self.tee_rpc_instance.load_balance(reqs)
                 if len(reqs) == 0:
