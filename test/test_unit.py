@@ -1,4 +1,5 @@
 import cProfile
+import os
 import threading
 import time
 from test.test_base import TestConfigLoggerBase
@@ -77,9 +78,10 @@ class TestUnit(TestConfigLoggerBase):
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         local_request = LocalRequestSource()
         local_request.registry_source(path, self.config)
+        local_request.request_per_second = float(os.getenv("RPS", 1))
 
         ProcessManager.registry_interrupt(
-            f"strong_tee12_8_request{local_request.request_per_second}"
+            # f"strong_tee12_8_request{local_request.request_per_second}"
         )
 
         dispatcher = Dispatcher(self.config)
@@ -88,7 +90,7 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher.endpoint_loop(service)
 
     def test_tee_instance(self):
-        ProcessManager.registry_interrupt("weak_tee12_8_request")
+        ProcessManager.registry_interrupt("weak")
         service = LocalEncoderDecoderService(self.config, "TEE")
         rpc_request = RpcRequestSource(self.config.tee_service_port)
         threading.Thread(target=rpc_request.start_service, daemon=True).start()

@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1csecurerag/rpc/messages.proto\x1a\x1bgoogle/protobuf/empty.proto\"?\n\x11LocalSharedTensor\x12\x0c\n\x04\x62yte\x18\x01 \x01(\x0c\x12\r\n\x05shape\x18\x02 \x03(\x05\x12\r\n\x05\x64type\x18\x03 \x01(\t\"\x99\x02\n\x04\x44\x61ta\x12\r\n\x05index\x18\x01 \x01(\x05\x12\x10\n\x08question\x18\x02 \x01(\t\x12\x0e\n\x06target\x18\x03 \x01(\t\x12\x10\n\x08passages\x18\x04 \x01(\t\x12\"\n\x06scores\x18\x05 \x01(\x0b\x32\x12.LocalSharedTensor\x12$\n\x08\x63ontexts\x18\x06 \x01(\x0b\x32\x12.LocalSharedTensor\x12)\n\rcontext_masks\x18\x07 \x01(\x0b\x32\x12.LocalSharedTensor\x12\"\n\x06tokens\x18\x08 \x01(\x0b\x32\x12.LocalSharedTensor\x12#\n\x07\x64\x65p_idx\x18\t \x01(\x0b\x32\x12.LocalSharedTensor\x12\x10\n\x08text_ans\x18\n \x01(\t\"c\n\x04Task\x12\x10\n\x08\x65nv_type\x18\x01 \x01(\t\x12\x14\n\x05input\x18\x02 \x01(\x0b\x32\x05.Data\x12\x15\n\x06output\x18\x03 \x01(\x0b\x32\x05.Data\x12\x1c\n\x14private_passage_size\x18\x04 \x01(\x05\"\x1f\n\x07Request\x12\x14\n\x05tasks\x18\x01 \x03(\x0b\x32\x05.Task\"0\n\x08Response\x12\x14\n\x05tasks\x18\x01 \x03(\x0b\x32\x05.Task\x12\x0e\n\x06\x63redit\x18\x02 \x01(\x05\x32@\n\x0e\x45ncoderService\x12.\n\x17\x45xecuteBatchEncoderTask\x12\x08.Request\x1a\t.Response2@\n\x0e\x44\x65\x63oderService\x12.\n\x17\x45xecuteBatchDecoderTask\x12\x08.Request\x1a\t.Response2\xbc\x01\n\x0fGenerateService\x12/\n\x18\x45xecuteBatchGenerateTask\x12\x08.Request\x1a\t.Response\x12\x39\n\"ExecuteBatchOffloadingGenerateTask\x12\x08.Request\x1a\t.Response\x12=\n&ExecuteBatchContinueEncoderDecoderTask\x12\x08.Request\x1a\t.Response2\x8c\x01\n\rMetricService\x12=\n\x0b\x43learMetric\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\x12<\n\nDumpMetric\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Emptyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1csecurerag/rpc/messages.proto\x1a\x1bgoogle/protobuf/empty.proto\"?\n\x11LocalSharedTensor\x12\x0c\n\x04\x62yte\x18\x01 \x01(\x0c\x12\r\n\x05shape\x18\x02 \x03(\x05\x12\r\n\x05\x64type\x18\x03 \x01(\t\"\x99\x02\n\x04\x44\x61ta\x12\r\n\x05index\x18\x01 \x01(\x05\x12\x10\n\x08question\x18\x02 \x01(\t\x12\x0e\n\x06target\x18\x03 \x01(\t\x12\x10\n\x08passages\x18\x04 \x01(\t\x12\"\n\x06scores\x18\x05 \x01(\x0b\x32\x12.LocalSharedTensor\x12$\n\x08\x63ontexts\x18\x06 \x01(\x0b\x32\x12.LocalSharedTensor\x12)\n\rcontext_masks\x18\x07 \x01(\x0b\x32\x12.LocalSharedTensor\x12\"\n\x06tokens\x18\x08 \x01(\x0b\x32\x12.LocalSharedTensor\x12#\n\x07\x64\x65p_idx\x18\t \x01(\x0b\x32\x12.LocalSharedTensor\x12\x10\n\x08text_ans\x18\n \x01(\t\"c\n\x04Task\x12\x10\n\x08\x65nv_type\x18\x01 \x01(\t\x12\x14\n\x05input\x18\x02 \x01(\x0b\x32\x05.Data\x12\x15\n\x06output\x18\x03 \x01(\x0b\x32\x05.Data\x12\x1c\n\x14private_passage_size\x18\x04 \x01(\x05\"7\n\x07Request\x12\x14\n\x05tasks\x18\x01 \x03(\x0b\x32\x05.Task\x12\x16\n\x0e\x64ump_json_name\x18\x02 \x01(\t\"0\n\x08Response\x12\x14\n\x05tasks\x18\x01 \x03(\x0b\x32\x05.Task\x12\x0e\n\x06\x63redit\x18\x02 \x01(\x05\x32@\n\x0e\x45ncoderService\x12.\n\x17\x45xecuteBatchEncoderTask\x12\x08.Request\x1a\t.Response2@\n\x0e\x44\x65\x63oderService\x12.\n\x17\x45xecuteBatchDecoderTask\x12\x08.Request\x1a\t.Response2\xbc\x01\n\x0fGenerateService\x12/\n\x18\x45xecuteBatchGenerateTask\x12\x08.Request\x1a\t.Response\x12\x39\n\"ExecuteBatchOffloadingGenerateTask\x12\x08.Request\x1a\t.Response\x12=\n&ExecuteBatchContinueEncoderDecoderTask\x12\x08.Request\x1a\t.Response2\xc0\x01\n\rMetricService\x12=\n\x0b\x43learMetric\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\x12<\n\nDumpMetric\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\x12\x32\n\x0e\x44umpNameMetric\x12\x08.Request\x1a\x16.google.protobuf.Emptyb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -39,15 +39,15 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_TASK']._serialized_start=410
   _globals['_TASK']._serialized_end=509
   _globals['_REQUEST']._serialized_start=511
-  _globals['_REQUEST']._serialized_end=542
-  _globals['_RESPONSE']._serialized_start=544
-  _globals['_RESPONSE']._serialized_end=592
-  _globals['_ENCODERSERVICE']._serialized_start=594
-  _globals['_ENCODERSERVICE']._serialized_end=658
-  _globals['_DECODERSERVICE']._serialized_start=660
-  _globals['_DECODERSERVICE']._serialized_end=724
-  _globals['_GENERATESERVICE']._serialized_start=727
-  _globals['_GENERATESERVICE']._serialized_end=915
-  _globals['_METRICSERVICE']._serialized_start=918
-  _globals['_METRICSERVICE']._serialized_end=1058
+  _globals['_REQUEST']._serialized_end=566
+  _globals['_RESPONSE']._serialized_start=568
+  _globals['_RESPONSE']._serialized_end=616
+  _globals['_ENCODERSERVICE']._serialized_start=618
+  _globals['_ENCODERSERVICE']._serialized_end=682
+  _globals['_DECODERSERVICE']._serialized_start=684
+  _globals['_DECODERSERVICE']._serialized_end=748
+  _globals['_GENERATESERVICE']._serialized_start=751
+  _globals['_GENERATESERVICE']._serialized_end=939
+  _globals['_METRICSERVICE']._serialized_start=942
+  _globals['_METRICSERVICE']._serialized_end=1134
 # @@protoc_insertion_point(module_scope)

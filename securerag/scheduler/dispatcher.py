@@ -10,7 +10,7 @@ import torch
 from google.protobuf import empty_pb2
 
 from securerag.data import Profiler
-from securerag.rpc import messages_pb2_grpc
+from securerag.rpc import messages_pb2, messages_pb2_grpc
 from securerag.scheduler.requests import RequestSource
 from securerag.scheduler.tasks import (
     BatchContinueEncoderDecoderTask,
@@ -269,16 +269,22 @@ class Dispatcher:
                             "FINISH_TIME_TEE",
                             time.time() - max(get_metric("start_time")),
                         )
-                        if len(get_metric("finished_request_tee")) == self.load_size:
+                        all_finished_request = len(get_metric("finished_request_tee"))
+                        if self.tee_rpc_instance is not None:
+                            all_finished_request += (
+                                self.tee_rpc_instance.send_request_size
+                            )
+                        if all_finished_request == self.load_size:
                             process_name = (
                                 get_metric("process_name")[0]
                                 if len(get_metric("process_name")) > 0
                                 else "unknown_process"
                             )
                             dump_metric(f"tmp/{process_name}.json")
-                            # dump_metric(
-                            #     f"tmp/sched_request{self.request_source.request_per_second}_threshold07.json"
-                            # )
+                            if self.tee_rpc_instance is not None:
+                                self.tee_rpc_instance.dump(
+                                    process_name.replace("strong", "weak")
+                                )
                             exit(1)
                     show_metric()
 
@@ -305,14 +311,14 @@ class Dispatcher:
             if len(reqs) > 0:
                 add_metric("arrived_request_size", len(reqs))
             if len(reqs) > 0:
-                if (
-                    self.tee_rpc_instance is not None
-                    and len(self.tee_encoder_task_queue) != 0
-                    and len(reqs[0].input_data["passages"]) < 10
+                if self.tee_rpc_instance is not None and (
+                    len(self.tee_encoder_task_queue)
+                    != 0
+                    # or reqs[0].private_passage_size < 5
                 ):
                     reqs = self.tee_rpc_instance.load_balance(reqs)
-                if len(reqs) == 0:
-                    break
+                    if len(reqs) == 0:
+                        continue
                 req = reqs.pop()
                 pub, pri = Task.create_task_from_request(req)
                 if pub is not None:
@@ -328,16 +334,23 @@ class WeakTEE:
     def __init__(self):
         self.post = None
         port = 8082
-        channel = grpc.insecure_channel(
+        self.channel = grpc.insecure_channel(
             f"localhost:{port}",
             options=[
                 ("grpc.max_receive_message_length", -1),
                 ("grpc.max_send_message_length", -1),
             ],
         )
-        stub = messages_pb2_grpc.MetricServiceStub(channel)
+        stub = messages_pb2_grpc.MetricServiceStub(self.channel)
         stub.ClearMetric(empty_pb2.Empty())
-        self.stub = messages_pb2_grpc.GenerateServiceStub(channel)
+        self.stub = messages_pb2_grpc.GenerateServiceStub(self.channel)
+        self.send_request_size = 0
+
+    def dump(self, name):
+        time.sleep(10)
+        stub = messages_pb2_grpc.MetricServiceStub(self.channel)
+        stub.DumpNameMetric(messages_pb2.Request(dump_json_name=name))
+        self.send_request_size = 0
 
     def load_balance(self, reqs: list):
         if len(reqs) == 0:
@@ -351,4 +364,5 @@ class WeakTEE:
         batch = BatchContinueEncoderDecoderTask().add_tasks([task])
         batch.rpc_execute(self.stub)
         self.post = batch.future
+        self.send_request_size += 1
         return reqs

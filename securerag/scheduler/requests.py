@@ -21,7 +21,7 @@ from securerag.scheduler.tasks import (
     Task,
     add_MetricServiceServicer_to_server,
 )
-from securerag.utils import add_metric, delete_metric
+from securerag.utils import add_metric, delete_metric, dump_metric
 
 
 class Request:
@@ -67,6 +67,11 @@ class RpcRequestSource(RequestSource, GenerateService, MetricService):
             req.arrive_time = time.time()
             self.queue.put(req)
         return messages_pb2.Response(credit=self.max_queue_size - self.queue.qsize())
+
+    def DumpNameMetric(self, request, context):
+        name = request.dump_json_name
+        dump_metric(f"tmp/{name}.json")
+        return empty_pb2.Empty()
 
     def ClearMetric(self, request, context):
         print(f"TEE Instance service: delete metric")

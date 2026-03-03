@@ -46,6 +46,7 @@ class ProcessManager:
 
     def registry_interrupt(process_name=None):
         def handler(sig, frame):
+            print("RECEIVE INTERRUPT SINGAL!!!")
             dump_metric(f"tmp/{process_name}.json")
             sys.exit(0)
 

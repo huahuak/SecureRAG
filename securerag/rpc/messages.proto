@@ -19,6 +19,7 @@ service GenerateService {
 service MetricService {
   rpc ClearMetric(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc DumpMetric(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc DumpNameMetric(Request) returns (google.protobuf.Empty);
 }
 
 message LocalSharedTensor {
@@ -49,6 +50,7 @@ message Task {
 
 message Request {
   repeated Task tasks = 1;
+  string dump_json_name=2;
 }
 
 message Response {
