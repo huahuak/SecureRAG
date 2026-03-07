@@ -31,6 +31,7 @@ def load(path: str, size) -> dict:
 
 
 class Dataset(torch.utils.data.Dataset):
+
     def __init__(
         self,
         data,
@@ -211,6 +212,7 @@ class RAGSequenceCollator(object):
 
 class FiDT5Collator(object):
     def __init__(self, text_maxlength, tokenizer, answer_maxlength=20):
+        random.seed(2026)
         self.tokenizer = tokenizer
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength
@@ -276,6 +278,7 @@ class SecureRAG4T5Collator(object):
     def __init__(
         self, text_maxlength, tokenizer, answer_maxlength=20, private_passage_ratio=0.1
     ):
+        random.seed(2026)
         self.tokenizer = tokenizer
         self.text_maxlength = text_maxlength
         self.answer_maxlength = answer_maxlength

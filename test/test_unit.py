@@ -66,6 +66,7 @@ class TestUnit(TestConfigLoggerBase):
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         local_request = LocalRequestSource()
         local_request.registry_source(path, self.config)
+        local_request.request_per_second = float(os.getenv("RPS", 1))
 
         dispatcher = Dispatcher(self.config)
         dispatcher.registry_request_source(local_request)

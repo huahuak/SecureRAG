@@ -779,12 +779,13 @@ class TestEfficiencyForFiD(TestFIDT5):
 
 class TestAccuracyForFiD(TestFIDT5):
     def setUp(self):
+        super().setUp()
+
         self.config.device = "cuda"
         self.config.n_context = 10  # k
-        self.config.batch_size = 16
+        self.config.batch_size = 1
         self.config.load_size = 1000
 
-        super().setUp()
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         datas = data.load(path=path, size=self.config.load_size)
         self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
@@ -800,10 +801,19 @@ class TestAccuracyForFiD(TestFIDT5):
         self.split_agg_with_adpatpf.set_eta(5)
 
     def test_accuracy(self):
+        data_loader = torch.utils.data.dataloader.DataLoader(
+            dataset=self.dataset,
+            batch_size=self.config.batch_size,
+            collate_fn=data.FiDT5Collator(
+                tokenizer=self.tokenizer,
+                text_maxlength=self.config.text_maxlength,
+                answer_maxlength=self.config.answer_maxlength,
+            ),
+        )
         securerag.eval.evaluate(
             model=self.original_model,
             dataset=self.dataset,
-            dataloader=self.data_loader,
+            dataloader=data_loader,
             tokenizer=self.tokenizer,
             cfg=self.config,
         )
@@ -818,8 +828,8 @@ class TestAccuracyForFiD(TestFIDT5):
         #     cfg=self.config,
         # )
         # show_metric()
-        # for model in [self.split_agg, self.split_agg_with_adpatpf]:
-        for model in [self.split_agg_with_adpatpf]:
+        for model in [self.split_agg, self.split_agg_with_adpatpf]:
+            # for model in [self.split_agg_with_adpatpf]:
             for d in self.d_values:
                 self.config.private_passage_ratio = d
                 self.dataloader = DataLoader(
