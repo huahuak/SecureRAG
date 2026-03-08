@@ -756,24 +756,29 @@ class TestEfficiencyForFiD(TestFIDT5):
                 )
             show_metric()
 
-        for d in self.d_values:
-            self.config.private_passage_ratio = d
-            dataloader = DataLoader(
-                dataset=self.dataset,
-                batch_size=self.config.batch_size,
-                collate_fn=data.SecureRAG4T5Collator(
-                    tokenizer=self.tokenizer,
-                    text_maxlength=self.config.text_maxlength,
-                    answer_maxlength=self.config.answer_maxlength,
-                    private_passage_ratio=self.config.private_passage_ratio,
-                ),
-            )
-            self.mlo_model.set_private_ratio(d)
-            do_eval("mlo_fidt5", self.mlo_model, self.data_loader)
-            do_eval("sa_fidt5", self.sa_model, dataloader)
-            do_eval("sa_pf_fidt5", self.sa_pf_model, dataloader)
-        do_eval("llo_fidt5", self.llo_model, self.data_loader)
-        do_eval("gpu_fidt5", self.gpu_model, self.data_loader)
+        for model, model_name in zip(
+            [self.sa_model, self.sa_pf_model], ["sa_fidt5", "sa_pf_fidt5"]
+        ):
+            for d in self.d_values:
+                self.config.private_passage_ratio = d
+                dataloader = DataLoader(
+                    dataset=self.dataset,
+                    batch_size=self.config.batch_size,
+                    collate_fn=data.SecureRAG4T5Collator(
+                        tokenizer=self.tokenizer,
+                        text_maxlength=self.config.text_maxlength,
+                        answer_maxlength=self.config.answer_maxlength,
+                        private_passage_ratio=self.config.private_passage_ratio,
+                    ),
+                )
+                self.mlo_model.set_private_ratio(d)
+                do_eval(model_name, model, dataloader)
+            dump_metric(f"tmp/{model_name}.json")
+            # do_eval("mlo_fidt5", self.mlo_model, self.data_loader)
+            # do_eval("sa_fidt5", self.sa_model, dataloader)
+            # do_eval("sa_pf_fidt5", self.sa_pf_model, dataloader)
+        # do_eval("llo_fidt5", self.llo_model, self.data_loader)
+        # do_eval("gpu_fidt5", self.gpu_model, self.data_loader)
         do_eval("cpu_fidt5", self.cpu_model, self.data_loader)
 
 

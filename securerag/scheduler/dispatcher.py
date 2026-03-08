@@ -63,7 +63,10 @@ class Dispatcher:
         self.tee_rpc_instance = instance
 
     def endpoint_loop_baseline(
-        self, service: LocalEncoderDecoderService, enable_offloading=False
+        self,
+        service: LocalEncoderDecoderService,
+        enable_offloading=False,
+        enable_adaptive_fusion=True,
     ):
         task_queue = TaskQueue()
         batch_size = 1
@@ -105,6 +108,9 @@ class Dispatcher:
                 gpu_batch_task.rpc_execute(stub)
             if enable_offloading and (len(batch) == 0):
                 continue
+            if enable_offloading and (len(batch) != 0) and not enable_adaptive_fusion:
+                for task in batch:
+                    task.dep = None
             service.ExecuteBatchEncoderTask(batch)
             now = time.time()
             for task in batch:

@@ -77,7 +77,7 @@ class FusionAggregate(Dependency):
         pub_sum = public_scores.sum()
         pri_sum = private_scores.sum()
         all_sum = pub_sum + pri_sum
-        threshold = 0.7
+        threshold = 0.8
         if (pub_sum / all_sum) > threshold or (pri_sum / all_sum) > threshold:
             idx = torch.arange(public_scores.size(0), all_scores.size(0))
         else:
