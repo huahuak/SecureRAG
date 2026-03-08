@@ -19,13 +19,13 @@ class Config:
         self.__dict__[name] = value
 
     def __add_options(self):
-        self.parser.add_argument("--load_size", type=int, default=64)
+        self.parser.add_argument("--load_size", type=int, default=1000)
         self.parser.add_argument("--eval_print_freq", type=int, default=1)
         self.parser.add_argument("--log_path", type=str, default="./log/stdout.log")
         self.parser.add_argument("--process_name", type=str, default="unkown_process")
 
     def __add_generator_options(self):
-        self.parser.add_argument("--n_context", type=int, default=100)
+        self.parser.add_argument("--n_context", type=int, default=10)
         self.parser.add_argument("--batch_size", type=int, default=2)
         self.parser.add_argument("--text_maxlength", type=int, default=200)
         self.parser.add_argument("--answer_maxlength", type=int, default=50)

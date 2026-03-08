@@ -11,13 +11,17 @@ from google.protobuf import empty_pb2
 from securerag.rpc import messages_pb2_grpc
 from securerag.scheduler.dependency import FusionAggregate
 from securerag.scheduler.dispatcher import Dispatcher, WeakTEE
-from securerag.scheduler.requests import LocalRequestSource, RpcRequestSource
+from securerag.scheduler.requests import (
+    FixedTestRequestSource,
+    LocalRequestSource,
+    RpcRequestSource,
+)
 from securerag.scheduler.tasks import (
     BatchEncoderTask,
     EncoderDecoderSerivce,
     LocalEncoderDecoderService,
 )
-from securerag.utils import ProcessManager
+from securerag.utils import ProcessManager, clear_metric, delete_metric, dump_metric
 
 
 class TestUnit(TestConfigLoggerBase):
@@ -91,6 +95,24 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher = Dispatcher(self.config)
         dispatcher.registry_request_source(local_request)
         dispatcher.endpoint_loop(service)
+
+    def test_efficency(self):
+        dispatcher = Dispatcher(self.config)
+        for is_adaptive in [False, True]:
+            for d in [0.1, 0.3, 0.5, 0.7, 0.9]:
+                service = LocalEncoderDecoderService(self.config, "TEE")
+                path = "data/open_domain_data/NQ/dev_with_scores.json"
+                local_request = FixedTestRequestSource()
+                local_request.registry_source(path, self.config)
+                local_request.request_per_second = self.config.load_size
+                local_request.set_private_ratio(self.config.n_context, d)
+
+                dispatcher.registry_request_source(local_request)
+                dispatcher.endpoint_loop_baseline(
+                    service, enable_offloading=True, enable_adaptive_fusion=is_adaptive
+                )
+                clear_metric("finished_request_tee")
+            dump_metric(f"tmp/is_adaptive_{is_adaptive}.json")
 
     def test_multi_rpc_client(self):
         service = LocalEncoderDecoderService(self.config, "TEE")

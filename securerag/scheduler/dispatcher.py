@@ -108,8 +108,9 @@ class Dispatcher:
                 gpu_batch_task.rpc_execute(stub)
             if enable_offloading and (len(batch) == 0):
                 continue
-            if enable_offloading and (len(batch) != 0) and not enable_adaptive_fusion:
+            if enable_offloading and not enable_adaptive_fusion:
                 for task in batch:
+                    add_metric("non_dep_times", 1)
                     task.dep = None
             service.ExecuteBatchEncoderTask(batch)
             now = time.time()

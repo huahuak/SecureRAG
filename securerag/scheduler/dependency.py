@@ -70,12 +70,13 @@ class FusionAggregate(Dependency):
         # idx = sort_idx[:size]
         # return all_scores.gather(dim=0, index=idx), idx
         all_scores: torch.Tensor = torch.cat([public_scores, private_scores], dim=0)
-        c_size = public_scores.size(0)
-        cp_size = private_scores.size(0)
-        total_size = c_size + cp_size
+        all_scores_softmax = torch.softmax(all_scores, -1)
+        pub_size = public_scores.size(0)
+        pri_size = private_scores.size(0)
+        total_size = pub_size + pri_size
 
-        pub_sum = public_scores.sum()
-        pri_sum = private_scores.sum()
+        pub_sum = all_scores_softmax[:pub_size].sum()
+        pri_sum = all_scores_softmax[pub_size:].sum()
         all_sum = pub_sum + pri_sum
         threshold = 0.8
         if (pub_sum / all_sum) > threshold or (pri_sum / all_sum) > threshold:

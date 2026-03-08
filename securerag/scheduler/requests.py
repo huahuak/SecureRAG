@@ -146,3 +146,16 @@ class LocalRequestSource(RequestSource):
         req.input_data["scores"] = req.input_data["scores"][:siz]
 
         return req
+
+
+class FixedTestRequestSource(LocalRequestSource):
+    def set_private_ratio(self, n_passages, ratio):
+        self.private_ratio = ratio
+        self.n_passages = n_passages
+
+    def request_load_post_process(self, req):  # -> Any:
+        siz = self.n_passages
+        req.private_passage_size = int(self.private_ratio * siz)
+        req.input_data["passages"] = req.input_data["passages"][:siz]
+        req.input_data["scores"] = req.input_data["scores"][:siz]
+        return req
