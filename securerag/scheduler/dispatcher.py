@@ -163,8 +163,12 @@ class Dispatcher:
                 add_metric("FINISH_TIME_TEE", time.time() - start_time)
                 if len(get_metric("finished_request_tee")) == self.load_size:
                     type = "offloading" if enable_offloading else "native"
-                    name = f"tmp/{type}_request{self.request_source.request_per_second}_threshold07.json"
-                    dump_metric(name)
+                    process_name = (
+                        get_metric("process_name")[0]
+                        if len(get_metric("process_name")) > 0
+                        else "unknown_process"
+                    )
+                    dump_metric(f"tmp/{process_name}.json")
                     return
             show_metric()
 

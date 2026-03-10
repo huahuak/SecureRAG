@@ -55,13 +55,13 @@ class TestModelBase(TestConfigLoggerBase):
         random.seed(42)  # fixed shuffle
         torch.manual_seed(42)
         super().setUpClass()
-        cls.config.device = "cpu"
-        cls.config.n_context = 10  # k
-        cls.config.batch_size = 16
-        cls.config.load_size = 100
+        cls.config.device = "cuda"
+        cls.config.n_context = 100  # k
+        cls.config.batch_size = 8
+        cls.config.load_size = 1000
         cls.config.private_passage_ratio = 0.5
 
-        path = "data/open_domain_data/NQ/dev_with_scores.json"
+        path = "data/open_domain_data/TQA/test_with_scores.json"
         datas = data.load(path=path, size=cls.config.load_size)
         cls.dataset = data.Dataset(data=datas, n_context=cls.config.n_context)
 
@@ -219,6 +219,7 @@ class TestFIDT5(TestModelBase):
             tokenizer=self.tokenizer,
             cfg=self.config,
         )
+        dump_metric("tmp/TestFIDT5_TQA.json")
 
     def test_k_eval(self):
         import numpy as np
@@ -297,6 +298,7 @@ class TestRAGSequence(TestModelBase):
             tokenizer=self.tokenizer,
             cfg=self.config,
         )
+        dump_metric("tmp/TestRAGSequence_TQA.json")
 
     def test_generate(self):
         device = self.config.device
@@ -791,7 +793,7 @@ class TestAccuracyForFiD(TestFIDT5):
         self.config.batch_size = 1
         self.config.load_size = 1000
 
-        path = "data/open_domain_data/NQ/dev_with_scores.json"
+        path = "data/open_domain_data/TQA/test_with_scores.json"
         datas = data.load(path=path, size=self.config.load_size)
         self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
 
@@ -823,7 +825,7 @@ class TestAccuracyForFiD(TestFIDT5):
             cfg=self.config,
         )
         show_metric()
-        dump_metric("tmp/accuracy(original-k10).json")
+        dump_metric("tmp/accuracy(original-k10)_nq_threshold0.7.json")
 
         # securerag.eval.evaluate(
         #     model=self.mlo_model,
@@ -855,7 +857,7 @@ class TestAccuracyForFiD(TestFIDT5):
                     cfg=self.config,
                 )
                 show_metric()
-                dump_metric("tmp/accuray(eta5,k10).json")
+                dump_metric("tmp/accuray(eta5,k10)_nq_threshold0.7.json")
 
 
 class TestEtaForFiD(TestFIDT5):

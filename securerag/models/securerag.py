@@ -137,7 +137,7 @@ class SecureRAG(nn.Module):
                     pub_sum = public_scores.sum()
                     pri_sum = private_scores.sum()
                     all_sum = pub_sum + pri_sum
-                    threshold = 0.8
+                    threshold = 0.7
                     if (pub_sum / all_sum) > threshold or (
                         pri_sum / all_sum
                     ) > threshold:

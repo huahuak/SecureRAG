@@ -100,6 +100,7 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher = Dispatcher(self.config)
         for is_adaptive in [False, True]:
             for d in [0.1, 0.3, 0.5, 0.7, 0.9]:
+                # for d in [0.5]:
                 service = LocalEncoderDecoderService(self.config, "TEE")
                 path = "data/open_domain_data/NQ/dev_with_scores.json"
                 local_request = FixedTestRequestSource()

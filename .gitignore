@@ -8,6 +8,7 @@
 /.cache
 /tmp
 /occlum_instance
+/wiki_dpr
 
 lib/*
 
