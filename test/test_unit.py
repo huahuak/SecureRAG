@@ -114,7 +114,7 @@ class TestUnit(TestConfigLoggerBase):
                     service, enable_offloading=True, enable_adaptive_fusion=is_adaptive
                 )
                 clear_metric("finished_request_tee")
-            dump_metric(f"tmp/is_adaptive_{is_adaptive}_k10_s100.json")
+            dump_metric(f"tmp/is_adaptive_{is_adaptive}_thre0.9_k10_s100_e.json")
 
     def test_multi_rpc_client(self):
         service = LocalEncoderDecoderService(self.config, "TEE")

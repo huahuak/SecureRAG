@@ -15,7 +15,7 @@ from securerag.models.utils import merge_tensor
 from securerag.profiler import Profiler
 from securerag.utils import add_metric, clear_metric, get_metric
 
-ENABLE_DEV = False
+ENABLE_DEV = True
 
 
 class SecureRAG(nn.Module):
@@ -137,7 +137,7 @@ class SecureRAG(nn.Module):
                     pub_sum = public_scores.sum()
                     pri_sum = private_scores.sum()
                     all_sum = pub_sum + pri_sum
-                    threshold = 0.7
+                    threshold = 0.9
                     if (pub_sum / all_sum) > threshold or (
                         pri_sum / all_sum
                     ) > threshold:

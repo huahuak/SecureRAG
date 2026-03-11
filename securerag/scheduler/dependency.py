@@ -45,6 +45,14 @@ class FusionAggregate(Dependency):
         add_metric("pri_fusion_size", len(private_fusion_scores))
         return True
 
+    def get_all_dep_idx(self):
+        public_scores = self.public_task.input["scores"]
+        private_scores = self.private_task.input["scores"]
+        _, idx = FusionAggregate.adaptive_passage_selection(
+            public_scores, private_scores
+        )
+        return idx
+
     def get_public_dep_idx(self):
         public_scores = self.public_task.input["scores"]
         private_scores = self.private_task.input["scores"]
@@ -53,7 +61,7 @@ class FusionAggregate(Dependency):
         )
         return idx[: len(idx) - len(private_scores)]
 
-    def adaptive_passage_selection(public_scores, private_scores, threshold=0.8):
+    def adaptive_passage_selection(public_scores, private_scores, threshold=0.u):
         # all_scores: torch.Tensor = torch.cat([public_scores, private_scores], dim=0)
         # c_size = public_scores.size(0)
         # cp_size = private_scores.size(0)

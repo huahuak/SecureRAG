@@ -56,9 +56,9 @@ class TestModelBase(TestConfigLoggerBase):
         torch.manual_seed(42)
         super().setUpClass()
         cls.config.device = "cuda"
-        cls.config.n_context = 100  # k
-        cls.config.batch_size = 8
-        cls.config.load_size = 1000
+        cls.config.n_context = 10  # k
+        cls.config.batch_size = 1
+        cls.config.load_size = 100
         cls.config.private_passage_ratio = 0.5
 
         path = "data/open_domain_data/TQA/test_with_scores.json"
@@ -731,11 +731,10 @@ class TestSecureRAG(TestModelBase):
 
 class TestEfficiencyForFiD(TestFIDT5):
     def setUp(self):
-        self.config.n_context = 10  # k
-        self.config.batch_size = 16
-        self.config.load_size = 100
-
         super().setUp()
+        self.config.n_context = 10  # k
+        self.config.batch_size = 1
+        self.config.load_size = 100
 
         self.cpu_model = copy.deepcopy(self.model).to("cpu")
         self.gpu_model = copy.deepcopy(self.model).to("cuda")
@@ -759,7 +758,9 @@ class TestEfficiencyForFiD(TestFIDT5):
             show_metric()
 
         for model, model_name in zip(
-            [self.sa_model, self.sa_pf_model], ["sa_fidt5", "sa_pf_fidt5"]
+            # [self.sa_model, self.sa_pf_model], ["sa_fidt5", "sa_pf_fidt5"]
+            [self.sa_pf_model],
+            ["sa_pf_fidt5"],
         ):
             for d in self.d_values:
                 self.config.private_passage_ratio = d
@@ -773,15 +774,16 @@ class TestEfficiencyForFiD(TestFIDT5):
                         private_passage_ratio=self.config.private_passage_ratio,
                     ),
                 )
-                self.mlo_model.set_private_ratio(d)
+                # self.mlo_model.set_private_ratio(d)
                 do_eval(model_name, model, dataloader)
-            dump_metric(f"tmp/{model_name}.json")
+            dump_metric(f"tmp/{model_name}_th0.7.json")
             # do_eval("mlo_fidt5", self.mlo_model, self.data_loader)
             # do_eval("sa_fidt5", self.sa_model, dataloader)
             # do_eval("sa_pf_fidt5", self.sa_pf_model, dataloader)
         # do_eval("llo_fidt5", self.llo_model, self.data_loader)
         # do_eval("gpu_fidt5", self.gpu_model, self.data_loader)
         do_eval("cpu_fidt5", self.cpu_model, self.data_loader)
+        dump_metric(f"tmp/cpu_fidt5.json")
 
 
 class TestAccuracyForFiD(TestFIDT5):
@@ -791,7 +793,7 @@ class TestAccuracyForFiD(TestFIDT5):
         self.config.device = "cuda"
         self.config.n_context = 10  # k
         self.config.batch_size = 1
-        self.config.load_size = 100
+        self.config.load_size = 1000
 
         path = "data/open_domain_data/NQ/dev_with_scores.json"
         datas = data.load(path=path, size=self.config.load_size)
@@ -808,24 +810,24 @@ class TestAccuracyForFiD(TestFIDT5):
         self.split_agg_with_adpatpf.set_eta(5)
 
     def test_accuracy(self):
-        data_loader = torch.utils.data.dataloader.DataLoader(
-            dataset=self.dataset,
-            batch_size=self.config.batch_size,
-            collate_fn=data.FiDT5Collator(
-                tokenizer=self.tokenizer,
-                text_maxlength=self.config.text_maxlength,
-                answer_maxlength=self.config.answer_maxlength,
-            ),
-        )
-        securerag.eval.evaluate(
-            model=self.original_model,
-            dataset=self.dataset,
-            dataloader=data_loader,
-            tokenizer=self.tokenizer,
-            cfg=self.config,
-        )
-        show_metric()
-        dump_metric("tmp/accuracy(original-k10)_nq_threshold0.7.json")
+        # data_loader = torch.utils.data.dataloader.DataLoader(
+        #     dataset=self.dataset,
+        #     batch_size=self.config.batch_size,
+        #     collate_fn=data.FiDT5Collator(
+        #         tokenizer=self.tokenizer,
+        #         text_maxlength=self.config.text_maxlength,
+        #         answer_maxlength=self.config.answer_maxlength,
+        #     ),
+        # )
+        # securerag.eval.evaluate(
+        #     model=self.original_model,
+        #     dataset=self.dataset,
+        #     dataloader=data_loader,
+        #     tokenizer=self.tokenizer,
+        #     cfg=self.config,
+        # )
+        # show_metric()
+        # dump_metric("tmp/accuracy(original-k10)_nq_threshold0.7.json")
 
         # securerag.eval.evaluate(
         #     model=self.mlo_model,
@@ -835,8 +837,8 @@ class TestAccuracyForFiD(TestFIDT5):
         #     cfg=self.config,
         # )
         # show_metric()
-        for model in [self.split_agg, self.split_agg_with_adpatpf]:
-            # for model in [self.split_agg_with_adpatpf]:
+        # for model in [self.split_agg, self.split_agg_with_adpatpf]:
+        for model in [self.split_agg_with_adpatpf]:
             for d in self.d_values:
                 self.config.private_passage_ratio = d
                 self.dataloader = DataLoader(
@@ -857,7 +859,7 @@ class TestAccuracyForFiD(TestFIDT5):
                     cfg=self.config,
                 )
                 show_metric()
-                dump_metric("tmp/accuray(eta5,k10)_nq_threshold0.7.json")
+                dump_metric("tmp/accuray(eta5,k10)_nq_threshold0.9.json")
 
 
 class TestEtaForFiD(TestFIDT5):

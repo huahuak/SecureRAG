@@ -114,6 +114,11 @@ class Task:
             add_metric("required_dep_size", len(dep_idx))
             if len(dep_idx) > 0:
                 public_task.input["dep_idx"] = dep_idx
+                all_idx = private_task.dep.get_all_dep_idx()
+                idx_list = all_idx.tolist()
+                private_task.input["passages"] = [data["passages"][i] for i in idx_list]
+                private_task.input["scores"] = [data["scores"][i] for i in idx_list]
+                private_task.dep = None
             else:
                 private_task.dep = None
 
