@@ -791,9 +791,9 @@ class TestAccuracyForFiD(TestFIDT5):
         self.config.device = "cuda"
         self.config.n_context = 10  # k
         self.config.batch_size = 1
-        self.config.load_size = 1000
+        self.config.load_size = 100
 
-        path = "data/open_domain_data/TQA/test_with_scores.json"
+        path = "data/open_domain_data/NQ/dev_with_scores.json"
         datas = data.load(path=path, size=self.config.load_size)
         self.dataset = data.Dataset(data=datas, n_context=self.config.n_context)
 

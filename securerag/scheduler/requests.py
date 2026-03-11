@@ -152,6 +152,7 @@ class FixedTestRequestSource(LocalRequestSource):
     def set_private_ratio(self, n_passages, ratio):
         self.private_ratio = ratio
         self.n_passages = n_passages
+        random.seed(2026)
 
     def request_load_post_process(self, req):  # -> Any:
         siz = self.n_passages

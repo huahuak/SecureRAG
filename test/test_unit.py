@@ -70,12 +70,14 @@ class TestUnit(TestConfigLoggerBase):
         )
 
     def test_native_rpc_client(self):
-        ProcessManager.registry_interrupt("native")
+        ProcessManager.registry_interrupt("native_k10_s100")
         service = LocalEncoderDecoderService(self.config, "TEE")
 
         path = "data/open_domain_data/NQ/dev_with_scores.json"
-        local_request = LocalRequestSource()
+        local_request = FixedTestRequestSource()
         local_request.registry_source(path, self.config)
+        local_request.request_per_second = self.config.load_size
+        local_request.set_private_ratio(self.config.n_context, 1)
 
         dispatcher = Dispatcher(self.config)
         dispatcher.registry_request_source(local_request)
@@ -100,7 +102,6 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher = Dispatcher(self.config)
         for is_adaptive in [False, True]:
             for d in [0.1, 0.3, 0.5, 0.7, 0.9]:
-                # for d in [0.5]:
                 service = LocalEncoderDecoderService(self.config, "TEE")
                 path = "data/open_domain_data/NQ/dev_with_scores.json"
                 local_request = FixedTestRequestSource()
@@ -113,7 +114,7 @@ class TestUnit(TestConfigLoggerBase):
                     service, enable_offloading=True, enable_adaptive_fusion=is_adaptive
                 )
                 clear_metric("finished_request_tee")
-            dump_metric(f"tmp/is_adaptive_{is_adaptive}.json")
+            dump_metric(f"tmp/is_adaptive_{is_adaptive}_k10_s100.json")
 
     def test_multi_rpc_client(self):
         service = LocalEncoderDecoderService(self.config, "TEE")

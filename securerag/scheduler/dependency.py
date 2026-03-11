@@ -14,7 +14,6 @@ class Dependency:
 class FusionAggregate(Dependency):
     def __init__(self, public_task, private_task):
         super().__init__()
-        self.eta = 2.0
         self.public_task = public_task
         self.private_task = private_task
 
@@ -50,11 +49,11 @@ class FusionAggregate(Dependency):
         public_scores = self.public_task.input["scores"]
         private_scores = self.private_task.input["scores"]
         _, idx = FusionAggregate.adaptive_passage_selection(
-            public_scores, private_scores, self.eta
+            public_scores, private_scores
         )
         return idx[: len(idx) - len(private_scores)]
 
-    def adaptive_passage_selection(public_scores, private_scores, eta):
+    def adaptive_passage_selection(public_scores, private_scores, threshold=0.8):
         # all_scores: torch.Tensor = torch.cat([public_scores, private_scores], dim=0)
         # c_size = public_scores.size(0)
         # cp_size = private_scores.size(0)
@@ -73,12 +72,13 @@ class FusionAggregate(Dependency):
         all_scores_softmax = torch.softmax(all_scores, -1)
         pub_size = public_scores.size(0)
         pri_size = private_scores.size(0)
+        public_scores = all_scores_softmax[:pub_size]
+        private_scores = all_scores_softmax[pub_size:]
         total_size = pub_size + pri_size
 
-        pub_sum = all_scores_softmax[:pub_size].sum()
-        pri_sum = all_scores_softmax[pub_size:].sum()
+        pub_sum = public_scores.sum()
+        pri_sum = private_scores.sum()
         all_sum = pub_sum + pri_sum
-        threshold = 0.8
         if (pub_sum / all_sum) > threshold or (pri_sum / all_sum) > threshold:
             idx = torch.arange(public_scores.size(0), all_scores.size(0))
         else:
