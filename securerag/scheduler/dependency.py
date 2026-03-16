@@ -61,7 +61,7 @@ class FusionAggregate(Dependency):
         )
         return idx[: len(idx) - len(private_scores)]
 
-    def adaptive_passage_selection(public_scores, private_scores, threshold=0.u):
+    def adaptive_passage_selection(public_scores, private_scores, threshold=0.8):
         # all_scores: torch.Tensor = torch.cat([public_scores, private_scores], dim=0)
         # c_size = public_scores.size(0)
         # cp_size = private_scores.size(0)

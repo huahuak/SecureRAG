@@ -1,8 +1,13 @@
 import cProfile
 import os
+import random
 import threading
 import time
+from securerag.config import Config
+from securerag.data import Profiler
+from securerag.models import FiDT5
 from test.test_base import TestConfigLoggerBase
+from transformers.file_utils import ModelOutput
 
 import grpc
 import torch
@@ -142,3 +147,39 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher = Dispatcher(self.config)
         dispatcher.registry_request_source(rpc_request)
         dispatcher.endpoint_loop(service)
+
+    def test_decoder_with_k_contexts(self):
+        cfg = Config()
+        model_path = cfg.generator_model_path
+        model: FiDT5 = FiDT5.from_pretrained(model_path)
+        batch_size = 10
+        device = "cpu"
+        encoder_outputs = ModelOutput()
+        random.seed(2026)
+        for k in range(10):
+            contexts = torch.rand(
+                (
+                    batch_size,
+                    200 * k,
+                    768,
+                )
+            )
+            encoder_outputs["last_hidden_state"] = contexts.to(device)
+            masks = torch.full(
+                (
+                    batch_size,
+                    200 * k,
+                ),
+                True,
+            )
+            with Profiler(f"DECODER"):
+                for _ in range(10):
+                    ans = model.generate_without_encoder(
+                        input_ids=torch.empty(batch_size, 1).to(
+                            device
+                        ),  # useless input_ids
+                        encoder_outputs=encoder_outputs,
+                        attention_mask=masks.to(device),
+                        max_length=2,
+                    )
+            dump_metric("tmp/decoder_with_k_contexts.json")
