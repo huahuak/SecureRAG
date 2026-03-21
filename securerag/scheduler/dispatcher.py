@@ -1,3 +1,4 @@
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, thread
 from threading import Lock
@@ -47,6 +48,7 @@ class Dispatcher:
 
         self.running = True
 
+        # useless
         self.tee_encoder_batch_size = 4
         self.tee_decoder_batch_size = 4
         self.gpu_encoder_batch_size = 6
@@ -69,7 +71,7 @@ class Dispatcher:
         enable_adaptive_fusion=True,
     ):
         task_queue = TaskQueue()
-        batch_size = 1
+        batch_size = int(os.getenv("BATCH_SIZE", 1))
         stub = None
         if enable_offloading:
             port = 8081

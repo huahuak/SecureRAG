@@ -47,7 +47,8 @@ class TestUnit(TestConfigLoggerBase):
         service.start_service(worker_num=2)
 
     def test_offloading_rpc_client(self):
-        ProcessManager.registry_interrupt("offloading")
+        # ProcessManager.registry_interrupt("offloading")
+        ProcessManager.registry_interrupt()
         service = LocalEncoderDecoderService(self.config, "TEE")
 
         path = "data/open_domain_data/NQ/dev_with_scores.json"
@@ -57,7 +58,7 @@ class TestUnit(TestConfigLoggerBase):
         dispatcher = Dispatcher(self.config)
         dispatcher.registry_request_source(local_request)
         dispatcher.endpoint_loop_baseline(
-            service, enable_offloading=True, enable_adaptive_fusion=False
+            service, enable_offloading=True, enable_adaptive_fusion=True
         )
 
     def test_adpative_fusion_rpc_client(self):
